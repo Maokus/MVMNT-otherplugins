@@ -11,62 +11,7 @@ import {
 } from '@mvmnt/plugin-sdk';
 import { VisualMedia, Text, Rectangle } from '@mvmnt/plugin-sdk/render';
 import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
-
-// ── Animation constants ──────────────────────────────────────────────────────
-
-const JUMP_DURATION = 0.3;
-const JUMP_HEIGHT = 20;
-const BOUNCE_DURATION = 0.5;
-const BOUNCE_AMOUNT = 0.2;
-// Flip: how far before/after the note onset the scale-down/up takes effect
-const FLIP_PRE = 0.2;
-const FLIP_POST = 0.2;
-
-/** Compute animated x/y offset and w/h for the image given the current animation state. */
-function animateImage(
-    animation: string,
-    elapsed: number,
-    timeToNext: number | null,
-    w: number,
-    h: number
-): { x: number; y: number; w: number; h: number } {
-    if (animation === 'jump') {
-        const progress = Math.min(elapsed / JUMP_DURATION, 1);
-        const env = 1 - Math.pow(progress, 3);
-        return { x: 0, y: -JUMP_HEIGHT * env, w, h };
-    }
-
-    if (animation === 'bounce') {
-        const progress = Math.min(elapsed / BOUNCE_DURATION, 1);
-        const scale = 1 + BOUNCE_AMOUNT * Math.exp(-progress * 6) * Math.cos(progress * Math.PI * 2.5);
-        const dw = w * (scale - 1);
-        const dh = h * (scale - 1);
-        return { x: -dw / 2, y: -dh / 2, w: w * scale, h: h * scale };
-    }
-
-    if (animation === 'flipy' || animation === 'flipx') {
-        let scale = 1;
-        if (elapsed < FLIP_POST) {
-            // Post-onset: ease-out from 0 → 1 (fast then slow)
-            scale = Math.pow(Math.max(0, elapsed) / FLIP_POST, 0.5);
-        } else if (timeToNext !== null && timeToNext < FLIP_PRE) {
-            // Pre-onset: ease-in from 1 → 0 (slow then fast)
-            const p = 1 - timeToNext / FLIP_PRE;
-            scale = 1 - Math.pow(p, 2);
-        }
-        scale = Math.max(0, scale);
-
-        if (animation === 'flipy') {
-            const newH = h * scale;
-            return { x: 0, y: (h - newH) / 2, w, h: newH };
-        } else {
-            const newW = w * scale;
-            return { x: (w - newW) / 2, y: 0, w: newW, h };
-        }
-    }
-
-    return { x: 0, y: 0, w, h };
-}
+import { applyAnimation, FLIP_PRE } from './carousel-animate';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -169,7 +114,6 @@ export class ImageCarouselElement extends SceneElement {
 
         const animation = props.animation as string;
         const EPS = 1e-3;
-        // For flip we need a short lookahead to detect the approaching next note
         const lookahead = animation === 'flipy' || animation === 'flipx' ? FLIP_PRE + EPS : EPS;
 
         const notes = host.api.timeline.selectNotesInWindow({
@@ -178,15 +122,12 @@ export class ImageCarouselElement extends SceneElement {
             endSec: targetTime + lookahead,
         });
 
-        // Notes that started at or before targetTime determine the image index
         const pastNotes = notes.filter((n) => n.startTime <= targetTime);
         const imageIndex = pastNotes.length % 4;
 
-        // Most recent onset drives animation timing
         const lastNote = pastNotes.length > 0 ? pastNotes[pastNotes.length - 1] : null;
         const elapsed = lastNote ? Math.max(0, targetTime - lastNote.startTime) : Infinity;
 
-        // Next upcoming onset for flip pre-phase
         const nextNote = notes.find((n) => n.startTime > targetTime);
         const timeToNext = nextNote ? nextNote.startTime - targetTime : null;
 
@@ -197,7 +138,6 @@ export class ImageCarouselElement extends SceneElement {
             props.image4 as string | null,
         ];
 
-        // Update all handles every frame so user assets are kept loaded
         const resources = userSrcs.map((src, i) =>
             src ? this._userHandles[i].update(resolveProjectAssetDescriptor(src)) : this._bundled[i].get()
         );
@@ -206,12 +146,15 @@ export class ImageCarouselElement extends SceneElement {
         const w = props.imageWidth as number;
         const h = props.imageHeight as number;
 
-        const { x, y, w: aw, h: ah } = animateImage(animation, elapsed, timeToNext, w, h);
-
-        const vm = new VisualMedia(x, y, aw, ah, { fitMode: 'contain', layoutBoundsMode: 'none' });
+        // Centre the VisualMedia at the element origin so scaleX/scaleY animate from the middle
+        const vm = new VisualMedia(w / 2, h / 2, w, h, { fitMode: 'contain', layoutBoundsMode: 'none' });
         vm.setResource(resource, status);
 
-        // Stable layout anchor — VisualMedia opts out of layout bounds via layoutBoundsMode: 'none'
+        vm.pivotX = w / 2;
+        vm.pivotY = h / 2;
+
+        applyAnimation(vm, animation, elapsed, timeToNext);
+
         return [new Rectangle(0, 0, w, h, null, 'transparent', 1), vm];
     }
 }

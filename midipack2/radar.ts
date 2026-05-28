@@ -258,7 +258,7 @@ export class RadarElement extends SceneElement {
             if (n.startTime > targetTime) continue;
             if (n.note < minNote || n.note > maxNote) continue;
 
-            const timeSinceHit = (targetTime - n.startTime) % period;
+            const timeSinceHit = targetTime - n.startTime;
             if (timeSinceHit > xFadeDuration) continue;
 
             const alpha = 1 - timeSinceHit / xFadeDuration;

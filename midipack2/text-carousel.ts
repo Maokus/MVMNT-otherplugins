@@ -11,52 +11,7 @@ import {
 } from '@mvmnt/plugin-sdk';
 import { Text, Rectangle } from '@mvmnt/plugin-sdk/render';
 import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
-
-// ── Animation constants ──────────────────────────────────────────────────────
-
-const JUMP_DURATION = 0.3;
-const JUMP_HEIGHT = 20;
-const BOUNCE_DURATION = 0.5;
-const BOUNCE_AMOUNT = 0.15;
-const FLIP_PRE = 0.2;
-const FLIP_POST = 0.2;
-
-/**
- * Returns adjusted y-position and font size for the current animation state.
- * For flipy/flipx: compresses font size toward 0 (text has no independent x-axis scale).
- */
-function animateText(
-    animation: string,
-    elapsed: number,
-    timeToNext: number | null,
-    y: number,
-    fontSize: number
-): { y: number; fontSize: number } {
-    if (animation === 'jump') {
-        const progress = Math.min(elapsed / JUMP_DURATION, 1);
-        const env = 1 - Math.pow(progress, 3);
-        return { y: y - JUMP_HEIGHT * env, fontSize };
-    }
-
-    if (animation === 'bounce') {
-        const progress = Math.min(elapsed / BOUNCE_DURATION, 1);
-        const scale = 1 + BOUNCE_AMOUNT * Math.exp(-progress * 6) * Math.cos(progress * Math.PI * 2.5);
-        return { y, fontSize: fontSize * scale };
-    }
-
-    if (animation === 'flipy' || animation === 'flipx') {
-        let scale = 1;
-        if (elapsed < FLIP_POST) {
-            scale = Math.pow(Math.max(0, elapsed) / FLIP_POST, 0.5);
-        } else if (timeToNext !== null && timeToNext < FLIP_PRE) {
-            const p = 1 - timeToNext / FLIP_PRE;
-            scale = 1 - Math.pow(p, 2);
-        }
-        return { y, fontSize: fontSize * Math.max(0, scale) };
-    }
-
-    return { y, fontSize };
-}
+import { applyAnimation, FLIP_PRE } from './carousel-animate';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -98,6 +53,20 @@ export class TextCarouselElement extends SceneElement {
                     },
                 ]),
                 tab.appearance([
+                    {
+                        id: 'layout',
+                        label: 'Layout',
+                        collapsed: false,
+                        properties: [
+                            prop.number('layoutWidth', 'Width', 400, { min: 10, step: 1 }),
+                            prop.number('layoutHeight', 'Height', 100, { min: 10, step: 1 }),
+                            prop.select('justification', 'Justification', 'center', [
+                                { value: 'left', label: 'Left' },
+                                { value: 'center', label: 'Center' },
+                                { value: 'right', label: 'Right' },
+                            ]),
+                        ],
+                    },
                     {
                         id: 'textAppearance',
                         label: 'Appearance',
@@ -169,18 +138,35 @@ export class TextCarouselElement extends SceneElement {
         const baseFontSize = props.fontSize as number;
         const fontFamilyRaw = (props.fontFamily as string | null) ?? 'Inter';
         const textColor = props.textColor as string;
+        const lw = props.layoutWidth as number;
+        const lh = props.layoutHeight as number;
+        const justification = props.justification as string;
 
         const { family: fontFamily, weight: weightPart } = parseFontSelection(fontFamilyRaw);
         const fontWeight = (weightPart || '400').toString();
         if (fontFamily) ensureFontLoaded(fontFamily, fontWeight);
 
-        const { y, fontSize } = animateText(animation, elapsed, timeToNext, 0, baseFontSize);
-        const fontString = `${fontWeight} ${Math.max(1, Math.round(fontSize))}px ${fontFamily ?? 'Inter'}, sans-serif`;
+        const fontString = `${fontWeight} ${Math.max(1, Math.round(baseFontSize))}px ${fontFamily ?? 'Inter'}, sans-serif`;
 
-        const textObj = new Text(0, y, lines[lineIndex], fontString, textColor, 'center', 'middle');
+        let textX: number;
+        let textAlign: 'left' | 'center' | 'right';
+        if (justification === 'left') {
+            textX = -lw / 2;
+            textAlign = 'left';
+        } else if (justification === 'right') {
+            textX = lw / 2;
+            textAlign = 'right';
+        } else {
+            textX = 0;
+            textAlign = 'center';
+        }
+
+        const textObj = new Text(textX, 0, lines[lineIndex], fontString, textColor, textAlign, 'middle');
+        textObj.setMaxWidth(lw);
         (textObj as any).setIncludeInLayoutBounds?.(false);
 
-        // Stable layout anchor — text opts out of bounds so layout stays at the point (0,0)
-        return [new Rectangle(0, 0, 1, 1, null, 'transparent', 1), textObj];
+        applyAnimation(textObj, animation, elapsed, timeToNext);
+
+        return [new Rectangle(-lw / 2, -lh / 2, lw, lh, null, 'transparent', 1), textObj];
     }
 }
