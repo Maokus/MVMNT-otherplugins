@@ -13,6 +13,10 @@
     {
       "type": "text-carousel",
       "entry": "text-carousel.ts"
+    },
+    {
+      "type": "radar",
+      "entry": "radar.ts"
     }
   ]
 }
