@@ -1,0 +1,18 @@
+{
+  "id": "us.maok.midipack2",
+  "name": "Midipack2",
+  "version": "1.0.0",
+  "apiVersion": "^1.0.0",
+  "description": "Custom plugin",
+  "author": "Your Name",
+  "elements": [
+    {
+      "type": "image-carousel",
+      "entry": "image-carousel.ts"
+    },
+    {
+      "type": "text-carousel",
+      "entry": "text-carousel.ts"
+    }
+  ]
+}
