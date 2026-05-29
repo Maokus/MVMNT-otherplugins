@@ -94,6 +94,16 @@ export class ImageCarouselElement extends SceneElement {
                                 { value: 'flipy', label: 'Flip Y' },
                                 { value: 'flipx', label: 'Flip X' },
                             ]),
+                            prop.number('animDuration', 'Duration (s)', 0.3, {
+                                min: 0.01,
+                                step: 0.01,
+                                visibleWhen: [{ key: 'animation', notEquals: 'none' }],
+                            }),
+                            prop.number('animAmount', 'Amount', 10, {
+                                min: 0,
+                                step: 0.5,
+                                visibleWhen: [{ key: 'animation', notEquals: 'none' }],
+                            }),
                         ],
                     },
                 ]),
@@ -113,6 +123,8 @@ export class ImageCarouselElement extends SceneElement {
         if (!host.ok) return host.renderFallback();
 
         const animation = props.animation as string;
+        const animDuration = (props.animDuration as number) ?? 0.3;
+        const animAmount = (props.animAmount as number) ?? 10;
         const EPS = 1e-3;
         const lookahead = animation === 'flipy' || animation === 'flipx' ? FLIP_PRE + EPS : EPS;
 
@@ -150,7 +162,7 @@ export class ImageCarouselElement extends SceneElement {
         const vm = new VisualMedia(w / 2, h / 2, w, h, { fitMode: 'contain', layoutBoundsMode: 'none' });
         vm.setResource(resource, status).setOrigin(w / 2, h / 2);
 
-        applyAnimation(vm, animation, elapsed, timeToNext);
+        applyAnimation(vm, animation, elapsed, timeToNext, animDuration, animAmount);
 
         return [new Rectangle(0, 0, w, h, { fillColor: null, strokeColor: 'transparent' }), vm];
     }

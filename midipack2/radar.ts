@@ -12,6 +12,7 @@ import {
 } from '@mvmnt/plugin-sdk';
 import { Arc, Line, Rectangle, Text, GlowLayer } from '@mvmnt/plugin-sdk/render';
 import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
+import * as af from '@mvmnt/plugin-sdk/animation';
 import { applyAnimation } from './animations';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -84,10 +85,12 @@ function makeRipple(
         const r = Math.max(1, rippleRadius * progress);
         return [
             noLayout(
-                new Arc(cx, cy, r, 0, Math.PI * 2, false, {
+                new Arc(cx, cy, r, {
                     fillColor: null,
                     strokeColor: colorA,
                     strokeWidth: 2,
+                    startAngle: 0,
+                    endAngle: Math.PI * 2,
                 })
             ),
         ];
@@ -195,6 +198,24 @@ export class RadarElement extends SceneElement {
                                 max: 5,
                                 step: 0.05,
                             }),
+                            prop.boolean('showTicks', 'Show Note Ticks', true, {
+                                description: 'Faint tick marks showing note positions in the current bar.',
+                            }),
+                            prop.colorAlpha('tickColor', 'Tick Color', '#FFFFFF30', {
+                                visibleWhen: [
+                                    { key: 'showTicks', truthy: true },
+                                    { key: 'colorMode', equals: 'single' },
+                                ],
+                            }),
+                            prop.number('tickSize', 'Tick Size (px)', 2, {
+                                min: 1,
+                                max: 10,
+                                step: 0.5,
+                                visibleWhen: [{ key: 'showTicks', truthy: true }],
+                            }),
+                            prop.boolean('faceCentre', 'Face Centre', false, {
+                                description: 'Rotate markers so they face the centre of the radar.',
+                            }),
                         ],
                     },
                     {
@@ -204,12 +225,6 @@ export class RadarElement extends SceneElement {
                         properties: [
                             prop.boolean('showRing', 'Show Background Ring', true),
                             prop.colorAlpha('ringColor', 'Ring Color', '#FFFFFF18'),
-                            prop.boolean('showTicks', 'Show Note Ticks', true, {
-                                description: 'Faint tick marks showing note positions in the current bar.',
-                            }),
-                            prop.colorAlpha('tickColor', 'Tick Color', '#FFFFFF30', {
-                                visibleWhen: [{ key: 'showTicks', truthy: true }],
-                            }),
                         ],
                     },
                     {
@@ -234,7 +249,10 @@ export class RadarElement extends SceneElement {
                                 visibleWhen: [{ key: 'rippleType', notEquals: 'none' }],
                             }),
                             prop.colorAlpha('rippleColor', 'Ripple Color', '#FFFFFFFF', {
-                                visibleWhen: [{ key: 'rippleType', notEquals: 'none' }],
+                                visibleWhen: [
+                                    { key: 'rippleType', notEquals: 'none' },
+                                    { key: 'colorMode', equals: 'single' },
+                                ],
                             }),
                             prop.number('rippleDuration', 'Ripple Duration (s)', 0.5, {
                                 min: 0.05,
@@ -254,6 +272,16 @@ export class RadarElement extends SceneElement {
                                 { value: 'bounce', label: 'Bounce' },
                                 { value: 'jump', label: 'Jump' },
                             ]),
+                            prop.number('animDuration', 'Duration (s)', 0.3, {
+                                min: 0.01,
+                                step: 0.01,
+                                visibleWhen: [{ key: 'animationType', notEquals: 'none' }],
+                            }),
+                            prop.number('animAmount', 'Scale', 10, {
+                                min: 0,
+                                step: 0.5,
+                                visibleWhen: [{ key: 'animationType', notEquals: 'none' }],
+                            }),
                         ],
                     },
                     {
@@ -292,6 +320,7 @@ export class RadarElement extends SceneElement {
         const ringColor = p.ringColor as string;
         const showTicks = p.showTicks as boolean;
         const tickColor = p.tickColor as string;
+        const tickSize = Math.max(1, (p.tickSize as number) ?? 2);
         const sweepColor = p.sweepColor as string;
         const bloomRadius = Math.max(0, p.bloomRadius as number);
         const rippleType = p.rippleType as string;
@@ -299,6 +328,9 @@ export class RadarElement extends SceneElement {
         const rippleColor = (p.rippleColor as string) ?? '#FFFFFFFF';
         const rippleDuration = Math.max(0.05, (p.rippleDuration as number) ?? 0.5);
         const animationType = p.animationType as string;
+        const animDuration = (p.animDuration as number) ?? 0.3;
+        const animAmount = (p.animAmount as number) ?? 10;
+        const faceCentre = p.faceCentre as boolean;
 
         // ── BPM / period ─────────────────────────────────────────────────────
         const snap = host.api.timeline.getStateSnapshot();
@@ -356,10 +388,11 @@ export class RadarElement extends SceneElement {
                 if (n.note < minNote || n.note > maxNote) continue;
                 const angle = clockToRad(((n.startTime - barStart) / period) * 360);
                 const r = noteRadius(n.note);
+                const tColor = colorMode === 'pitch' ? withAlpha(pitchToColor(n.note), 0.5) : tickColor;
                 objects.push(
                     noLayout(
-                        new Arc(r * Math.cos(angle), r * Math.sin(angle), 2, 0, Math.PI * 2, false, {
-                            fillColor: tickColor,
+                        new Arc(r * Math.cos(angle), r * Math.sin(angle), tickSize, 0, Math.PI * 2, false, {
+                            fillColor: tColor,
                         })
                     )
                 );
@@ -392,16 +425,21 @@ export class RadarElement extends SceneElement {
                 const alpha = 1 - timeSinceHit / markerDuration;
                 const marker = makeMarker(cx, cy, markerType, markerText, color, alpha, markerSize);
                 if (marker) {
+                    if (faceCentre) {
+                        marker.rotation = angle + Math.PI;
+                    }
                     if (animationType !== 'none') {
-                        applyAnimation(marker, animationType, timeSinceHit, null);
+                        applyAnimation(marker, animationType, timeSinceHit, null, animDuration, animAmount);
                     }
                     objects.push(marker);
                 }
             }
 
             if (rippleType !== 'none' && timeSinceHit <= rippleDuration) {
-                const progress = timeSinceHit / rippleDuration;
-                objects.push(...makeRipple(cx, cy, rippleType, progress, rippleRadius, rippleColor));
+                const rawProgress = timeSinceHit / rippleDuration;
+                const progress = af.easings.easeOutExpo(rawProgress);
+                const rColor = colorMode === 'pitch' ? pitchToColor(n.note) : rippleColor;
+                objects.push(...makeRipple(cx, cy, rippleType, progress, rippleRadius, rColor));
             }
         }
 

@@ -11,17 +11,30 @@ export const FLIP_POST = 0.2;
 /**
  * Mutates a render object's transform (x, y, scaleX, scaleY) for the selected animation.
  * The object must be centered at its local origin for scale animations to look correct.
+ * @param duration - overrides the animation speed (seconds); uses built-in default when omitted
+ * @param amount - overrides the animation intensity (jump height in px; bounce scale factor); uses built-in default when omitted
  */
-export function applyAnimation(obj: RenderObject, animation: string, elapsed: number, timeToNext: number | null): void {
+export function applyAnimation(
+    obj: RenderObject,
+    animation: string,
+    elapsed: number,
+    timeToNext: number | null,
+    duration?: number,
+    amount?: number
+): void {
     if (animation === 'jump') {
-        const progress = Math.min(elapsed / JUMP_DURATION, 1);
-        obj.y -= JUMP_HEIGHT * (1 - af.easings.easeOutExpo(progress));
+        const d = duration ?? JUMP_DURATION;
+        const h = amount ?? JUMP_HEIGHT;
+        const progress = Math.min(elapsed / d, 1);
+        obj.y -= h * (1 - af.easings.easeOutExpo(progress));
         return;
     }
 
     if (animation === 'bounce') {
-        const progress = Math.min(elapsed / BOUNCE_DURATION, 1);
-        const s = 1 + BOUNCE_AMOUNT * Math.exp(-progress * 6) * Math.cos(progress * Math.PI * 2.5);
+        const d = duration ?? BOUNCE_DURATION;
+        const a = amount ?? BOUNCE_AMOUNT;
+        const progress = Math.min(elapsed / d, 1);
+        const s = 1 + a * Math.exp(-progress * 6) * Math.cos(progress * Math.PI * 2.5);
         obj.scaleX *= s;
         obj.scaleY *= s;
         return;
