@@ -1,5 +1,5 @@
 // Radar — a sweeping playhead rotates around the centre. When it crosses a note's
-// phase position an "X" mark appears at the corresponding pitch radius and fades out.
+// phase position a marker appears at the corresponding pitch radius and fades out.
 
 import {
     SceneElement,
@@ -12,6 +12,7 @@ import {
 } from '@mvmnt/plugin-sdk';
 import { Arc, Line, Rectangle, Text, GlowLayer } from '@mvmnt/plugin-sdk/render';
 import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
+import { applyAnimation } from './animations';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -40,15 +41,81 @@ function pitchToColor(note: number): string {
     return hslToHex(((note % 12) / 12) * 360, 75, 60);
 }
 
-function makeX(cx: number, cy: number, half: number, baseColor: string, alpha: number): RenderObject[] {
+function withAlpha(hex: string, alpha: number): string {
     const a = Math.round(Math.max(0, Math.min(1, alpha)) * 255)
         .toString(16)
         .padStart(2, '0');
-    const color = (baseColor.length >= 7 ? baseColor.slice(0, 7) : baseColor) + a;
-    return [
-        noLayout(new Line(cx - half, cy - half, cx + half, cy + half, { color, lineWidth: 2 })),
-        noLayout(new Line(cx - half, cy + half, cx + half, cy - half, { color, lineWidth: 2 })),
-    ];
+    return (hex.length >= 7 ? hex.slice(0, 7) : hex) + a;
+}
+
+function makeMarker(
+    cx: number,
+    cy: number,
+    type: string,
+    customText: string,
+    color: string,
+    alpha: number,
+    size: number
+): RenderObject | null {
+    if (type === 'none') return null;
+    const colorA = withAlpha(color, alpha);
+    let char: string;
+    if (type === 'cross') char = '✕';
+    else if (type === 'diamond') char = '◆';
+    else if (type === 'note') char = '♪';
+    else char = customText || '?';
+    const fontSize = Math.max(8, Math.round(size));
+    return noLayout(new Text(cx, cy, char, `bold ${fontSize}px sans-serif`, colorA, 'center', 'middle'));
+}
+
+function makeRipple(
+    cx: number,
+    cy: number,
+    type: string,
+    progress: number,
+    rippleRadius: number,
+    color: string
+): RenderObject[] {
+    if (type === 'none' || progress >= 1) return [];
+    const alpha = Math.max(0, 1 - progress * 1.5);
+    const colorA = withAlpha(color, alpha);
+
+    if (type === 'circle') {
+        const r = Math.max(1, rippleRadius * progress);
+        return [
+            noLayout(
+                new Arc(cx, cy, r, 0, Math.PI * 2, false, {
+                    fillColor: null,
+                    strokeColor: colorA,
+                    strokeWidth: 2,
+                })
+            ),
+        ];
+    }
+
+    if (type === 'burst') {
+        const numRays = 8;
+        const inner = rippleRadius * 0.1;
+        const outer = Math.max(inner + 1, rippleRadius * (0.1 + 0.9 * progress));
+        const result: RenderObject[] = [];
+        for (let i = 0; i < numRays; i++) {
+            const angle = (i / numRays) * Math.PI * 2;
+            result.push(
+                noLayout(
+                    new Line(
+                        cx + Math.cos(angle) * inner,
+                        cy + Math.sin(angle) * inner,
+                        cx + Math.cos(angle) * outer,
+                        cy + Math.sin(angle) * outer,
+                        { color: colorA, lineWidth: 2 }
+                    )
+                )
+            );
+        }
+        return result;
+    }
+
+    return [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -63,7 +130,7 @@ export class RadarElement extends SceneElement {
             super.getConfigSchema(),
             {
                 name: 'Radar',
-                description: 'Sweeping playhead marks note hits with X at their pitch radius.',
+                description: 'Sweeping playhead marks note hits with a marker at their pitch radius.',
                 category: 'us.maok.midipack2',
             },
             [
@@ -79,19 +146,22 @@ export class RadarElement extends SceneElement {
                         label: 'Layout',
                         collapsed: false,
                         properties: [
-                            prop.number('radius', 'Outer Radius (px)', 200, { min: 20, step: 5 }),
+                            prop.number('radius', 'Outer Radius (px)', 600, { min: 20, step: 5 }),
                             prop.number('innerRadius', 'Inner Radius (px)', 40, { min: 5, step: 5 }),
-                            prop.number('minNote', 'Min MIDI Note', -1, {
-                                min: -1,
-                                max: 127,
-                                step: 1,
-                                description: 'Lowest pitch shown. -1 = auto-detect from track.',
+                            prop.boolean('autoRange', 'Auto Note Range', true, {
+                                description: 'Automatically derive the note range from the track.',
                             }),
-                            prop.number('maxNote', 'Max MIDI Note', -1, {
-                                min: -1,
+                            prop.number('minNote', 'Min MIDI Note', 36, {
+                                min: 0,
                                 max: 127,
                                 step: 1,
-                                description: 'Highest pitch shown. -1 = auto-detect from track.',
+                                visibleWhen: [{ key: 'autoRange', equals: false }],
+                            }),
+                            prop.number('maxNote', 'Max MIDI Note', 84, {
+                                min: 0,
+                                max: 127,
+                                step: 1,
+                                visibleWhen: [{ key: 'autoRange', equals: false }],
                             }),
                             prop.number('numBars', 'Bars per Revolution', 1, { min: 1, max: 16, step: 1 }),
                         ],
@@ -99,10 +169,19 @@ export class RadarElement extends SceneElement {
                 ]),
                 tab.appearance([
                     {
-                        id: 'marks',
-                        label: 'X Marks',
+                        id: 'marker',
+                        label: 'Marker',
                         collapsed: false,
                         properties: [
+                            prop.select('markerType', 'Marker', 'cross', [
+                                { value: 'cross', label: 'Cross' },
+                                { value: 'diamond', label: 'Diamond' },
+                                { value: 'note', label: 'Note' },
+                                { value: 'text', label: 'Text' },
+                            ]),
+                            prop.string('markerText', 'Marker Text', '★', {
+                                visibleWhen: [{ key: 'markerType', equals: 'text' }],
+                            }),
                             prop.select('colorMode', 'Color Mode', 'pitch', [
                                 { value: 'pitch', label: 'By Pitch (Hue)' },
                                 { value: 'single', label: 'Single Color' },
@@ -110,8 +189,8 @@ export class RadarElement extends SceneElement {
                             prop.colorAlpha('noteColor', 'Mark Color', '#FF6B6BFF', {
                                 visibleWhen: [{ key: 'colorMode', equals: 'single' }],
                             }),
-                            prop.number('xSize', 'Mark Size (px)', 8, { min: 2, max: 40, step: 1 }),
-                            prop.number('xFadeDuration', 'Fade Duration (s)', 0.5, {
+                            prop.number('markerSize', 'Marker Size (px)', 30, { min: 4, max: 64, step: 1 }),
+                            prop.number('markerDuration', 'Fade Duration (s)', 2, {
                                 min: 0.05,
                                 max: 5,
                                 step: 0.05,
@@ -134,13 +213,54 @@ export class RadarElement extends SceneElement {
                         ],
                     },
                     {
-                        id: 'sweep',
-                        label: 'Sweep',
+                        id: 'playhead',
+                        label: 'Playhead',
+                        collapsed: false,
+                        properties: [prop.colorAlpha('sweepColor', 'Playhead Color', '#FFFFFFFF')],
+                    },
+                    {
+                        id: 'ripple',
+                        label: 'Ripple',
                         collapsed: false,
                         properties: [
-                            prop.colorAlpha('sweepColor', 'Sweep Color', '#FFFFFFFF'),
-                            prop.number('bloomRadius', 'Bloom', 0, { min: 0, step: 1 }),
+                            prop.select('rippleType', 'Ripple', 'none', [
+                                { value: 'none', label: 'None' },
+                                { value: 'circle', label: 'Circle' },
+                                { value: 'burst', label: 'Burst' },
+                            ]),
+                            prop.number('rippleRadius', 'Ripple Radius (px)', 30, {
+                                min: 5,
+                                step: 1,
+                                visibleWhen: [{ key: 'rippleType', notEquals: 'none' }],
+                            }),
+                            prop.colorAlpha('rippleColor', 'Ripple Color', '#FFFFFFFF', {
+                                visibleWhen: [{ key: 'rippleType', notEquals: 'none' }],
+                            }),
+                            prop.number('rippleDuration', 'Ripple Duration (s)', 0.5, {
+                                min: 0.05,
+                                max: 5,
+                                step: 0.05,
+                                visibleWhen: [{ key: 'rippleType', notEquals: 'none' }],
+                            }),
                         ],
+                    },
+                    {
+                        id: 'animation',
+                        label: 'Animation',
+                        collapsed: false,
+                        properties: [
+                            prop.select('animationType', 'Animation', 'none', [
+                                { value: 'none', label: 'None' },
+                                { value: 'bounce', label: 'Bounce' },
+                                { value: 'jump', label: 'Jump' },
+                            ]),
+                        ],
+                    },
+                    {
+                        id: 'bloom',
+                        label: 'Bloom',
+                        collapsed: true,
+                        properties: [prop.number('bloomRadius', 'Bloom', 0, { min: 0, step: 1 })],
                     },
                 ]),
             ]
@@ -152,7 +272,7 @@ export class RadarElement extends SceneElement {
         if (!p.visible) return [];
 
         if (!p.midiTrackId) {
-            return [new Text(0, 0, 'Select a MIDI track', '14px sans-serif', { color: '#94a3b8' })];
+            return [new Text(0, 0, 'Select a MIDI track', '14px sans-serif', '#94a3b8', 'left', 'top')];
         }
 
         const host = getRequiredPluginApi(this, [PLUGIN_CAPABILITIES.timelineRead]);
@@ -162,8 +282,10 @@ export class RadarElement extends SceneElement {
         const radius = Math.max(20, p.radius as number);
         const innerRadius = Math.max(5, Math.min(radius - 10, p.innerRadius as number));
         const numBars = Math.max(1, Math.round(p.numBars as number));
-        const xFadeDuration = Math.max(0.05, p.xFadeDuration as number);
-        const xHalf = Math.max(2, (p.xSize as number) / 2);
+        const markerDuration = Math.max(0.05, p.markerDuration as number);
+        const markerSize = Math.max(4, p.markerSize as number);
+        const markerType = p.markerType as string;
+        const markerText = String(p.markerText ?? '★');
         const colorMode = p.colorMode as string;
         const noteColor = (p.noteColor as string).slice(0, 7);
         const showRing = p.showRing as boolean;
@@ -172,6 +294,11 @@ export class RadarElement extends SceneElement {
         const tickColor = p.tickColor as string;
         const sweepColor = p.sweepColor as string;
         const bloomRadius = Math.max(0, p.bloomRadius as number);
+        const rippleType = p.rippleType as string;
+        const rippleRadius = Math.max(5, (p.rippleRadius as number) ?? 30);
+        const rippleColor = (p.rippleColor as string) ?? '#FFFFFFFF';
+        const rippleDuration = Math.max(0.05, (p.rippleDuration as number) ?? 0.5);
+        const animationType = p.animationType as string;
 
         // ── BPM / period ─────────────────────────────────────────────────────
         const snap = host.api.timeline.getStateSnapshot();
@@ -180,22 +307,18 @@ export class RadarElement extends SceneElement {
         const period = numBars * beatsPerBar * (60 / bpm);
 
         // ── Note range ───────────────────────────────────────────────────────
-        const rawMin = Math.floor(p.minNote as number);
-        const rawMax = Math.floor(p.maxNote as number);
         let minNote: number;
         let maxNote: number;
 
-        if (rawMin === -1 || rawMax === -1) {
+        if (p.autoRange as boolean) {
             const pitches = host.api.timeline.selectDistinctNoteNumbers({
                 trackIds: [p.midiTrackId as string],
             });
-            const autoMin = pitches.length > 0 ? pitches[0] : 36;
-            const autoMax = pitches.length > 0 ? pitches[pitches.length - 1] : 84;
-            minNote = rawMin === -1 ? autoMin : Math.max(0, Math.min(127, rawMin));
-            maxNote = rawMax === -1 ? autoMax : Math.max(0, Math.min(127, rawMax));
+            minNote = pitches.length > 0 ? pitches[0] : 36;
+            maxNote = pitches.length > 0 ? pitches[pitches.length - 1] : 84;
         } else {
-            minNote = Math.max(0, Math.min(127, rawMin));
-            maxNote = Math.max(0, Math.min(127, rawMax));
+            minNote = Math.max(0, Math.min(127, Math.floor(p.minNote as number)));
+            maxNote = Math.max(0, Math.min(127, Math.floor(p.maxNote as number)));
         }
         if (maxNote <= minNote) maxNote = minNote + 1;
 
@@ -243,10 +366,8 @@ export class RadarElement extends SceneElement {
             }
         }
 
-        // ── Hit X marks ───────────────────────────────────────────────────────
-        // A note shows an X if: (1) it has played (startTime <= targetTime), and
-        // (2) the radar sweep most recently passed its phase within xFadeDuration.
-        // timeSinceHit = (targetTime - n.startTime) mod period
+        // ── Hit markers & effects ─────────────────────────────────────────────
+        const maxEffectDuration = rippleType !== 'none' ? Math.max(markerDuration, rippleDuration) : markerDuration;
         const EPS = 1e-3;
         const allPastNotes = host.api.timeline.selectNotesInWindow({
             trackIds: [p.midiTrackId as string],
@@ -259,13 +380,29 @@ export class RadarElement extends SceneElement {
             if (n.note < minNote || n.note > maxNote) continue;
 
             const timeSinceHit = targetTime - n.startTime;
-            if (timeSinceHit > xFadeDuration) continue;
+            if (timeSinceHit > maxEffectDuration) continue;
 
-            const alpha = 1 - timeSinceHit / xFadeDuration;
             const angle = clockToRad(((n.startTime % period) / period) * 360);
             const r = noteRadius(n.note);
+            const cx = r * Math.cos(angle);
+            const cy = r * Math.sin(angle);
             const color = colorMode === 'pitch' ? pitchToColor(n.note) : noteColor;
-            objects.push(...makeX(r * Math.cos(angle), r * Math.sin(angle), xHalf, color, alpha));
+
+            if (timeSinceHit <= markerDuration) {
+                const alpha = 1 - timeSinceHit / markerDuration;
+                const marker = makeMarker(cx, cy, markerType, markerText, color, alpha, markerSize);
+                if (marker) {
+                    if (animationType !== 'none') {
+                        applyAnimation(marker, animationType, timeSinceHit, null);
+                    }
+                    objects.push(marker);
+                }
+            }
+
+            if (rippleType !== 'none' && timeSinceHit <= rippleDuration) {
+                const progress = timeSinceHit / rippleDuration;
+                objects.push(...makeRipple(cx, cy, rippleType, progress, rippleRadius, rippleColor));
+            }
         }
 
         // ── Sweep line ────────────────────────────────────────────────────────
@@ -282,8 +419,6 @@ export class RadarElement extends SceneElement {
         );
 
         // ── Layout sentinel ───────────────────────────────────────────────────
-        // All other render objects opt out of layout bounds via noLayout() /
-        // layoutBoundsMode: 'none', so this rectangle is the sole layout anchor.
         const d = radius + 4;
         const layoutRect = new Rectangle(-d, -d, d * 2, d * 2, { fillColor: null });
         (layoutRect as any).setIncludeInLayoutBounds?.(true);
@@ -291,7 +426,6 @@ export class RadarElement extends SceneElement {
         if (bloomRadius > 0) {
             const glow = new GlowLayer({ glowBlur: bloomRadius });
             glow.addChildren(objects);
-            // layoutRect must stay at the top level — GlowLayer is excluded from bounds traversal
             return [layoutRect, glow];
         }
 

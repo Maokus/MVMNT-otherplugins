@@ -11,7 +11,7 @@ import {
 } from '@mvmnt/plugin-sdk';
 import { VisualMedia, Text, Rectangle } from '@mvmnt/plugin-sdk/render';
 import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
-import { applyAnimation, FLIP_PRE } from './carousel-animate';
+import { applyAnimation, FLIP_PRE } from './animations';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
