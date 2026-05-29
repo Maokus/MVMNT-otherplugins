@@ -155,6 +155,6 @@ export class ImageCarouselElement extends SceneElement {
 
         applyAnimation(vm, animation, elapsed, timeToNext);
 
-        return [new Rectangle(0, 0, w, h, null, 'transparent', 1), vm];
+        return [new Rectangle(0, 0, w, h, { fillColor: null, strokeColor: 'transparent' }), vm];
     }
 }

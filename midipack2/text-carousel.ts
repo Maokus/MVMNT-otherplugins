@@ -167,6 +167,6 @@ export class TextCarouselElement extends SceneElement {
 
         applyAnimation(textObj, animation, elapsed, timeToNext);
 
-        return [new Rectangle(-lw / 2, -lh / 2, lw, lh, null, 'transparent', 1), textObj];
+        return [new Rectangle(-lw / 2, -lh / 2, lw, lh, { fillColor: null, strokeColor: 'transparent' }), textObj];
     }
 }

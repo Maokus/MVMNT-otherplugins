@@ -46,8 +46,8 @@ function makeX(cx: number, cy: number, half: number, baseColor: string, alpha: n
         .padStart(2, '0');
     const color = (baseColor.length >= 7 ? baseColor.slice(0, 7) : baseColor) + a;
     return [
-        noLayout(new Line(cx - half, cy - half, cx + half, cy + half, color, 2)),
-        noLayout(new Line(cx - half, cy + half, cx + half, cy - half, color, 2)),
+        noLayout(new Line(cx - half, cy - half, cx + half, cy + half, { color, lineWidth: 2 })),
+        noLayout(new Line(cx - half, cy + half, cx + half, cy - half, { color, lineWidth: 2 })),
     ];
 }
 
@@ -152,7 +152,7 @@ export class RadarElement extends SceneElement {
         if (!p.visible) return [];
 
         if (!p.midiTrackId) {
-            return [new Text(0, 0, 'Select a MIDI track', '14px sans-serif', '#94a3b8', 'left', 'top')];
+            return [new Text(0, 0, 'Select a MIDI track', '14px sans-serif', { color: '#94a3b8' })];
         }
 
         const host = getRequiredPluginApi(this, [PLUGIN_CAPABILITIES.timelineRead]);
@@ -276,8 +276,7 @@ export class RadarElement extends SceneElement {
                     innerRadius * Math.sin(sweepAngle),
                     radius * Math.cos(sweepAngle),
                     radius * Math.sin(sweepAngle),
-                    sweepColor,
-                    2
+                    { color: sweepColor, lineWidth: 2 }
                 )
             )
         );
@@ -286,7 +285,7 @@ export class RadarElement extends SceneElement {
         // All other render objects opt out of layout bounds via noLayout() /
         // layoutBoundsMode: 'none', so this rectangle is the sole layout anchor.
         const d = radius + 4;
-        const layoutRect = new Rectangle(-d, -d, d * 2, d * 2, null, null, 0);
+        const layoutRect = new Rectangle(-d, -d, d * 2, d * 2, { fillColor: null });
         (layoutRect as any).setIncludeInLayoutBounds?.(true);
 
         if (bloomRadius > 0) {

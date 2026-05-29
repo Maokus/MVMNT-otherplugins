@@ -73,7 +73,7 @@ export class BoinkerElement extends SceneElement {
 
     private readonly _playback = new VisualMediaPlayback();
     private readonly _container = new EmptyRenderObject(0, 0, 1, 1, 1);
-    private readonly _layoutRect = new Rectangle(0, 0, BASE_SIZE, BASE_SIZE, null, null);
+    private readonly _layoutRect = new Rectangle(0, 0, BASE_SIZE, BASE_SIZE, { fillColor: null });
 
     constructor(id: string = 'boinker', config: Record<string, unknown> = {}) {
         super('boinker', id, config);
