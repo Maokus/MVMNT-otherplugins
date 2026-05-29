@@ -1,7 +1,9 @@
 import type { RenderObject } from '@mvmnt/plugin-sdk';
+import { Text } from '@mvmnt/plugin-sdk/render';
+import * as af from '@mvmnt/plugin-sdk/animation';
 
 export const JUMP_DURATION = 0.3;
-export const JUMP_HEIGHT = 20;
+export const JUMP_HEIGHT = 10;
 export const BOUNCE_DURATION = 0.5;
 export const BOUNCE_AMOUNT = 0.2;
 export const FLIP_PRE = 0.2;
@@ -14,7 +16,7 @@ export const FLIP_POST = 0.2;
 export function applyAnimation(obj: RenderObject, animation: string, elapsed: number, timeToNext: number | null): void {
     if (animation === 'jump') {
         const progress = Math.min(elapsed / JUMP_DURATION, 1);
-        obj.y -= JUMP_HEIGHT * (1 - Math.pow(progress, 3));
+        obj.y -= JUMP_HEIGHT * (1 - af.easings.easeOutExpo(progress));
         return;
     }
 

@@ -148,10 +148,7 @@ export class ImageCarouselElement extends SceneElement {
 
         // Centre the VisualMedia at the element origin so scaleX/scaleY animate from the middle
         const vm = new VisualMedia(w / 2, h / 2, w, h, { fitMode: 'contain', layoutBoundsMode: 'none' });
-        vm.setResource(resource, status);
-
-        vm.pivotX = w / 2;
-        vm.pivotY = h / 2;
+        vm.setResource(resource, status).setOrigin(w / 2, h / 2);
 
         applyAnimation(vm, animation, elapsed, timeToNext);
 
