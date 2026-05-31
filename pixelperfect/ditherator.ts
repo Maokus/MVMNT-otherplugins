@@ -1,5 +1,5 @@
 import { SceneElement, prop, insertElementConfig, tab, type RenderObject } from '@mvmnt/plugin-sdk';
-import { BoxRenderObject, type RenderConfig } from '@mvmnt/plugin-sdk/render';
+import { BoxRenderObject, PixelGrid, type RenderConfig } from '@mvmnt/plugin-sdk/render';
 import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
 
 // ── Bayer 4×4 ordered dither matrix, values normalised to [0, 1) ─────────────
@@ -108,29 +108,27 @@ function parseHexRGBA(hex: string): [number, number, number, number] {
     return [parseInt(c.slice(0, 2), 16), parseInt(c.slice(2, 4), 16), parseInt(c.slice(4, 6), 16), 255];
 }
 
-// ── DitheringGrid — upscale-and-clear gapped pixel grid renderer ──────────────
+// ── GappedPixelGrid — upscale-and-clear gapped pixel grid renderer ────────────
 
 /**
  * Renders a cols×rows pixel buffer as nearest-neighbour scaled cells with optional
- * inter-cell gaps. Reuses OffscreenCanvas, context, and ImageData across frames.
+ * inter-cell gaps. Composes PixelGrid internally; reuses offscreen canvases across frames.
  *
  * Gap rendering uses an upscale-and-clear strategy:
- *   1. putImageData into a tiny (cols×rows) offscreen.
- *   2. drawImage (nearest-neighbour, no smoothing) into a full-size offscreen.
+ *   1. updatePixels on the internal PixelGrid (cols×rows offscreen).
+ *   2. drawTo scales it into a full-size offscreen.
  *   3. clearRect strips for the gap borders of every row and column.
  *
- * When gap === 0, the full-size offscreen is skipped and the tiny canvas is
+ * When gap === 0, the full-size offscreen is skipped and the small canvas is
  * drawn directly into the scene canvas, scaled up.
  */
-class DitheringGrid extends BoxRenderObject {
+class GappedPixelGrid extends BoxRenderObject {
     readonly cols: number;
     readonly rows: number;
     readonly cellSize: number;
     readonly gap: number;
 
-    private _smallOff: OffscreenCanvas;
-    private _smallCtx: OffscreenCanvasRenderingContext2D;
-    private _imgData: ImageData;
+    private _small: PixelGrid;
     private _fullOff: OffscreenCanvas | null;
     private _fullCtx: OffscreenCanvasRenderingContext2D | null;
 
@@ -153,9 +151,7 @@ class DitheringGrid extends BoxRenderObject {
         this.cellSize = cs;
         this.gap = g;
 
-        this._smallOff = new OffscreenCanvas(c, r);
-        this._smallCtx = this._smallOff.getContext('2d')!;
-        this._imgData = new ImageData(c, r);
+        this._small = new PixelGrid(0, 0, c, r, 1);
 
         if (g > 0) {
             this._fullOff = new OffscreenCanvas(c * cs, r * cs);
@@ -170,12 +166,11 @@ class DitheringGrid extends BoxRenderObject {
     }
 
     updatePixels(pixels: Uint8ClampedArray): void {
-        this._imgData.data.set(pixels);
-        this._smallCtx.putImageData(this._imgData, 0, 0);
+        this._small.updatePixels(pixels);
 
         if (this._fullCtx && this._fullOff) {
             this._fullCtx.clearRect(0, 0, this.width, this.height);
-            this._fullCtx.drawImage(this._smallOff, 0, 0, this.width, this.height);
+            this._small.drawTo(this._fullCtx, 0, 0, this.width, this.height);
             this._clearGaps(this._fullCtx);
         }
     }
@@ -195,22 +190,22 @@ class DitheringGrid extends BoxRenderObject {
     }
 
     protected _renderSelf(ctx: CanvasRenderingContext2D, _config: RenderConfig, _currentTime: number): void {
-        const prev = ctx.imageSmoothingEnabled;
-        ctx.imageSmoothingEnabled = false;
         if (this._fullOff) {
+            const prev = ctx.imageSmoothingEnabled;
+            ctx.imageSmoothingEnabled = false;
             ctx.drawImage(this._fullOff, 0, 0);
+            ctx.imageSmoothingEnabled = prev;
         } else {
-            ctx.drawImage(this._smallOff, 0, 0, this.width, this.height);
+            this._small.drawTo(ctx, 0, 0, this.width, this.height);
         }
-        ctx.imageSmoothingEnabled = prev;
     }
 }
 
 // ── DitheratorElement ─────────────────────────────────────────────────────────
 
 export class DitheratorElement extends SceneElement {
-    private _primaryGrid: DitheringGrid | null = null;
-    private _secondaryGrid: DitheringGrid | null = null;
+    private _primaryGrid: GappedPixelGrid | null = null;
+    private _secondaryGrid: GappedPixelGrid | null = null;
 
     constructor(id: string = 'ditherator', config: Record<string, unknown> = {}) {
         super('ditherator', id, config);
@@ -435,7 +430,7 @@ export class DitheratorElement extends SceneElement {
             this._primaryGrid.gap !== cellGap;
 
         if (needNewPrimary) {
-            this._primaryGrid = new DitheringGrid(ox, oy, cols, rows, cellSize, cellGap, pixels);
+            this._primaryGrid = new GappedPixelGrid(ox, oy, cols, rows, cellSize, cellGap, pixels);
         } else {
             this._primaryGrid!.updatePixels(pixels);
         }
@@ -452,7 +447,7 @@ export class DitheratorElement extends SceneElement {
                 this._secondaryGrid.gap !== secondaryCellGap;
 
             if (needNewSecondary) {
-                this._secondaryGrid = new DitheringGrid(
+                this._secondaryGrid = new GappedPixelGrid(
                     ox,
                     oy,
                     cols,

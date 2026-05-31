@@ -7,7 +7,7 @@ import {
     PLUGIN_CAPABILITIES,
     type RenderObject,
 } from '@mvmnt/plugin-sdk';
-import { BoxRenderObject, type RenderConfig } from '@mvmnt/plugin-sdk/render';
+import { PixelGrid } from '@mvmnt/plugin-sdk/render';
 import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
 
 // ── Bayer 4×4 ordered dither matrix (normalised to [0, 1)) ───────────────────
@@ -32,42 +32,9 @@ function parseHex6(hex: string): [number, number, number] {
     return [parseInt(c.slice(0, 2), 16), parseInt(c.slice(2, 4), 16), parseInt(c.slice(4, 6), 16)];
 }
 
-// ── Pixel grid render object ─────────────────────────────────────────────────
-class PixelGridRenderer extends BoxRenderObject {
-    readonly cols: number;
-    readonly rows: number;
-    readonly cellSize: number;
-    private _off: OffscreenCanvas;
-    private _ctx: OffscreenCanvasRenderingContext2D;
-    private _img: ImageData;
-
-    constructor(x: number, y: number, cols: number, rows: number, cellSize: number, pixels: Uint8ClampedArray) {
-        super(x, y, cols * cellSize, rows * cellSize);
-        this.cols = cols;
-        this.rows = rows;
-        this.cellSize = cellSize;
-        this._off = new OffscreenCanvas(cols, rows);
-        this._ctx = this._off.getContext('2d')!;
-        this._img = new ImageData(cols, rows);
-        this.updatePixels(pixels);
-    }
-
-    updatePixels(pixels: Uint8ClampedArray): void {
-        this._img.data.set(pixels);
-        this._ctx.putImageData(this._img, 0, 0);
-    }
-
-    protected _renderSelf(ctx: CanvasRenderingContext2D, _config: RenderConfig, _currentTime: number): void {
-        const prev = ctx.imageSmoothingEnabled;
-        ctx.imageSmoothingEnabled = false;
-        ctx.drawImage(this._off, 0, 0, this.width, this.height);
-        ctx.imageSmoothingEnabled = prev;
-    }
-}
-
 // ── Element ──────────────────────────────────────────────────────────────────
 export class AmurulikePianorollElement extends SceneElement {
-    private _grid: PixelGridRenderer | null = null;
+    private _grid: PixelGrid | null = null;
 
     constructor(id: string = 'amurulike-pianoroll', config: Record<string, unknown> = {}) {
         super('amurulike-pianoroll', id, config);
@@ -311,10 +278,11 @@ export class AmurulikePianorollElement extends SceneElement {
         const oy = -totalH / 2;
 
         const needNew =
-            !this._grid || this._grid.cols !== cols || this._grid.rows !== rows || this._grid.cellSize !== cellSize;
+            !this._grid || this._grid.cols !== cols || this._grid.rows !== rows ||
+            this._grid.width !== cols * cellSize;
 
         if (needNew) {
-            this._grid = new PixelGridRenderer(ox, oy, cols, rows, cellSize, pixels);
+            this._grid = new PixelGrid(ox, oy, cols, rows, cellSize, { pixels });
         } else {
             this._grid!.updatePixels(pixels);
         }

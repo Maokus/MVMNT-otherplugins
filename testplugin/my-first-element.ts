@@ -60,7 +60,7 @@ export class MyFirstElementElement extends SceneElement {
 
         pixelData[8] = 0;
 
-        objects.push(new PixelGrid(100, 100, 4, 3, 50, pixelData));
+        objects.push(new PixelGrid(100, 100, 4, 3, 50, { pixels: pixelData }));
 
         return objects;
     }
