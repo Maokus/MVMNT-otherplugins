@@ -99,7 +99,7 @@ function makeRipple(
     if (type === 'burst') {
         const numRays = 8;
         const inner = rippleRadius * 0.1;
-        const outer = Math.max(inner + 1, rippleRadius * (0.1 + 0.9 * progress));
+        const outer = Math.max(inner + 1, rippleRadius * (0.1 + 0.9 * af.easings.easeOutExpo(progress)));
         const result: RenderObject[] = [];
         for (let i = 0; i < numRays; i++) {
             const angle = (i / numRays) * Math.PI * 2;
@@ -198,7 +198,7 @@ export class RadarElement extends SceneElement {
                                 max: 5,
                                 step: 0.05,
                             }),
-                            prop.boolean('showTicks', 'Show Note Ticks', true, {
+                            prop.boolean('showTicks', 'Show Note Ticks', false, {
                                 description: 'Faint tick marks showing note positions in the current bar.',
                             }),
                             prop.colorAlpha('tickColor', 'Tick Color', '#FFFFFF30', {
@@ -207,9 +207,8 @@ export class RadarElement extends SceneElement {
                                     { key: 'colorMode', equals: 'single' },
                                 ],
                             }),
-                            prop.number('tickSize', 'Tick Size (px)', 2, {
+                            prop.number('tickSize', 'Tick Size (px)', 10, {
                                 min: 1,
-                                max: 10,
                                 step: 0.5,
                                 visibleWhen: [{ key: 'showTicks', truthy: true }],
                             }),
@@ -238,12 +237,12 @@ export class RadarElement extends SceneElement {
                         label: 'Ripple',
                         collapsed: false,
                         properties: [
-                            prop.select('rippleType', 'Ripple', 'none', [
+                            prop.select('rippleType', 'Ripple', 'circle', [
                                 { value: 'none', label: 'None' },
                                 { value: 'circle', label: 'Circle' },
                                 { value: 'burst', label: 'Burst' },
                             ]),
-                            prop.number('rippleRadius', 'Ripple Radius (px)', 30, {
+                            prop.number('rippleRadius', 'Ripple Radius (px)', 120, {
                                 min: 5,
                                 step: 1,
                                 visibleWhen: [{ key: 'rippleType', notEquals: 'none' }],
@@ -254,7 +253,7 @@ export class RadarElement extends SceneElement {
                                     { key: 'colorMode', equals: 'single' },
                                 ],
                             }),
-                            prop.number('rippleDuration', 'Ripple Duration (s)', 0.5, {
+                            prop.number('rippleDuration', 'Ripple Duration (s)', 2, {
                                 min: 0.05,
                                 max: 5,
                                 step: 0.05,
@@ -267,17 +266,17 @@ export class RadarElement extends SceneElement {
                         label: 'Animation',
                         collapsed: false,
                         properties: [
-                            prop.select('animationType', 'Animation', 'none', [
+                            prop.select('animationType', 'Animation', 'bounce', [
                                 { value: 'none', label: 'None' },
                                 { value: 'bounce', label: 'Bounce' },
                                 { value: 'jump', label: 'Jump' },
                             ]),
-                            prop.number('animDuration', 'Duration (s)', 0.3, {
+                            prop.number('animDuration', 'Duration (s)', 0.5, {
                                 min: 0.01,
                                 step: 0.01,
                                 visibleWhen: [{ key: 'animationType', notEquals: 'none' }],
                             }),
-                            prop.number('animAmount', 'Scale', 10, {
+                            prop.number('animAmount', 'Scale', 5, {
                                 min: 0,
                                 step: 0.5,
                                 visibleWhen: [{ key: 'animationType', notEquals: 'none' }],

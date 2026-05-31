@@ -13,6 +13,14 @@ import { Text, Rectangle } from '@mvmnt/plugin-sdk/render';
 import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
 import { applyAnimation, FLIP_PRE } from './animations';
 
+let _measureCanvas: HTMLCanvasElement | null = null;
+function measureTextWidth(text: string, fontString: string): number {
+    if (!_measureCanvas) _measureCanvas = document.createElement('canvas');
+    const ctx = _measureCanvas.getContext('2d')!;
+    ctx.font = fontString;
+    return ctx.measureText(text).width;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 export class TextCarouselElement extends SceneElement {
@@ -77,6 +85,27 @@ export class TextCarouselElement extends SceneElement {
                             }),
                             prop.number('fontSize', 'Font Size', 48, { min: 8, max: 300, step: 1 }),
                             prop.colorAlpha('textColor', 'Text Color', '#FFFFFFFF'),
+                        ],
+                    },
+                    {
+                        id: 'background',
+                        label: 'Background',
+                        collapsed: false,
+                        properties: [
+                            prop.boolean('bgEnabled', 'Enable Background', false),
+                            prop.colorAlpha('bgColor', 'Color', '#00000080', {
+                                visibleWhen: [{ key: 'bgEnabled', equals: true }],
+                            }),
+                            prop.number('bgPadding', 'Padding', 8, {
+                                min: 0,
+                                step: 1,
+                                visibleWhen: [{ key: 'bgEnabled', equals: true }],
+                            }),
+                            prop.number('bgCornerRadius', 'Corner Radius', 4, {
+                                min: 0,
+                                step: 1,
+                                visibleWhen: [{ key: 'bgEnabled', equals: true }],
+                            }),
                         ],
                     },
                     {
@@ -153,6 +182,10 @@ export class TextCarouselElement extends SceneElement {
         const lw = props.layoutWidth as number;
         const lh = props.layoutHeight as number;
         const justification = props.justification as string;
+        const bgEnabled = props.bgEnabled as boolean;
+        const bgColor = (props.bgColor as string) ?? '#00000080';
+        const bgPadding = (props.bgPadding as number) ?? 8;
+        const bgCornerRadius = (props.bgCornerRadius as number) ?? 4;
 
         const { family: fontFamily, weight: weightPart } = parseFontSelection(fontFamilyRaw);
         const fontWeight = (weightPart || '400').toString();
@@ -175,10 +208,35 @@ export class TextCarouselElement extends SceneElement {
 
         const textObj = new Text(textX, 0, lines[lineIndex], fontString, textColor, textAlign, 'middle');
         textObj.setMaxWidth(lw);
-        (textObj as any).setIncludeInLayoutBounds?.(false);
+        textObj.setLayoutParticipation('exclude');
 
         applyAnimation(textObj, animation, elapsed, timeToNext, animDuration, animAmount);
 
-        return [new Rectangle(-lw / 2, -lh / 2, lw, lh, { fillColor: null, strokeColor: 'transparent' }), textObj];
+        const result: RenderObject[] = [new Rectangle(-lw / 2, -lh / 2, lw, lh, { fillColor: null, strokeColor: 'transparent' })];
+
+        if (bgEnabled) {
+            const measuredWidth = measureTextWidth(lines[lineIndex], fontString);
+            const clampedWidth = Math.min(measuredWidth, lw);
+            const bgW = clampedWidth + bgPadding * 2;
+            const bgH = baseFontSize + bgPadding * 2;
+            let bgX: number;
+            if (textAlign === 'center') {
+                bgX = textX - bgW / 2;
+            } else if (textAlign === 'left') {
+                bgX = textX - bgPadding;
+            } else {
+                bgX = textX - clampedWidth - bgPadding;
+            }
+            const bgRect = new Rectangle(bgX, -bgH / 2, bgW, bgH, {
+                fillColor: bgColor,
+                strokeColor: null,
+                cornerRadius: bgCornerRadius,
+            });
+            bgRect.setLayoutParticipation('exclude');
+            result.push(bgRect);
+        }
+
+        result.push(textObj);
+        return result;
     }
 }
