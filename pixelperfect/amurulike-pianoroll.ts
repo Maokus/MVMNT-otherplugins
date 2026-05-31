@@ -3,16 +3,38 @@ import {
     prop,
     insertElementConfig,
     tab,
-    getPluginHostApi,
+    getRequiredPluginApi,
     PLUGIN_CAPABILITIES,
+    timeToTicks,
     type RenderObject,
 } from '@mvmnt/plugin-sdk';
 import { PixelGrid } from '@mvmnt/plugin-sdk/render';
 import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
-import { parseHex6, PixelBuffer } from './pixel-buffer';
+import { parseHex6, BAYER4 } from './pixel-buffer';
+import * as af from '@mvmnt/plugin-sdk/animation';
+import alea from 'seedrandom';
+
+// ── Types ────────────────────────────────────────────────────────────────────
+
+/** Flat Float32Array of size rows×cols, values in [0, 1]. Row-major order. */
+export type IntensityMatrix = Float32Array;
+
+/** Per-note data passed into each contribution stub. */
+export interface NoteRenderInfo {
+    /** Note's current column position (float). */
+    col: number;
+    /** Note's pitch row (0 = top, rows−1 = bottom). */
+    row: number;
+    /** Seconds since the note crossed the playhead (negative = still approaching). */
+    elapsed: number;
+    /** MIDI note number. */
+    note: number;
+    /** MIDI velocity [0–127]. */
+    velocity: number;
+}
 
 // ── Palette definitions ──────────────────────────────────────────────────────
-// Index 0: background, 1: tail, 2: note head, 3: ripple/accent
+
 const NAMED_PALETTES: Record<string, readonly string[]> = {
     seafoam: ['#2D505A', '#439B87', '#6EE4E3', '#EEF2A9'],
     sakura: ['#2A1A2E', '#7B3F6E', '#E85D75', '#FFD6E0'],
@@ -20,9 +42,45 @@ const NAMED_PALETTES: Record<string, readonly string[]> = {
     dusk: ['#1A0D2E', '#4A1A6E', '#CC44CC', '#FFE04A'],
 };
 
+// ── Intensity → pixel rendering ───────────────────────────────────────────────
+
+/**
+ * Converts an intensity matrix to RGBA pixel data using 5-level ordered dithering.
+ *
+ * Levels: 0 = transparent, 1–4 = palette[0..3] (darkest → brightest).
+ * The Bayer 4×4 threshold creates smooth dithered gradients between levels.
+ */
+function intensityToPixels(
+    matrix: IntensityMatrix,
+    cols: number,
+    rows: number,
+    palette: readonly [number, number, number][]
+): Uint8ClampedArray {
+    const numLevels = palette.length; // 4 visible levels + transparent = 5 total
+    const out = new Uint8ClampedArray(cols * rows * 4);
+    for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+            const v = matrix[r * cols + c];
+            if (v <= 0) continue;
+            const bayer = BAYER4[r & 3][c & 3];
+            const level = Math.min(numLevels, Math.floor(v * numLevels + bayer));
+            if (level === 0) continue;
+            const [pr, pg, pb] = palette[level - 1];
+            const idx = (r * cols + c) * 4;
+            out[idx] = pr;
+            out[idx + 1] = pg;
+            out[idx + 2] = pb;
+            out[idx + 3] = 255;
+        }
+    }
+    return out;
+}
+
 // ── Element ──────────────────────────────────────────────────────────────────
+
 export class AmurulikePianorollElement extends SceneElement {
     private _grid: PixelGrid | null = null;
+    private _matrix: IntensityMatrix | null = null;
 
     constructor(id: string = 'amurulike-pianoroll', config: Record<string, unknown> = {}) {
         super('amurulike-pianoroll', id, config);
@@ -33,7 +91,8 @@ export class AmurulikePianorollElement extends SceneElement {
             super.getConfigSchema(),
             {
                 name: 'Amurulike Pianoroll',
-                description: 'Pixel-art piano roll with projectile notes and ripple effects.',
+                description:
+                    'Pixel-art piano roll with projectile notes and ripple effects. Inspired by @amuru_chiptune',
                 category: 'us.maok.pixelperfect',
             },
             [
@@ -60,24 +119,11 @@ export class AmurulikePianorollElement extends SceneElement {
                                 max: 0.95,
                                 step: 0.01,
                             }),
-                        ],
-                    },
-                    {
-                        id: 'behavior',
-                        label: 'Behavior',
-                        collapsed: false,
-                        properties: [
-                            prop.number('tailLength', 'Tail Length (cells)', 10, { min: 1, max: 40, step: 1 }),
-                            prop.number('tailOscFreq', 'Tail Osc. Frequency', 4, { min: 0.5, max: 20, step: 0.5 }),
-                            prop.number('tailOscAmp', 'Tail Osc. Amplitude', 2.5, { min: 0, max: 10, step: 0.5 }),
-                            prop.number('slowFactor', 'Post-Playhead Speed Factor', 0.1, {
+                            prop.number('postHitSlowFactor', 'Post-Hit Slow Factor', 0.2, {
                                 min: 0,
                                 max: 1,
                                 step: 0.01,
                             }),
-                            prop.number('fadeOutDuration', 'Fade Duration (s)', 1.2, { min: 0.1, max: 5, step: 0.1 }),
-                            prop.number('rippleExpandSpeed', 'Ripple Expand Speed', 10, { min: 1, max: 40, step: 1 }),
-                            prop.number('rippleDuration', 'Ripple Duration (s)', 0.8, { min: 0.1, max: 3, step: 0.1 }),
                         ],
                     },
                 ]),
@@ -94,16 +140,16 @@ export class AmurulikePianorollElement extends SceneElement {
                                 { value: 'dusk', label: 'Dusk' },
                                 { value: 'custom', label: 'Custom' },
                             ]),
-                            prop.color('customColor0', 'Color 0 (Background)', '#2D505A', {
+                            prop.color('customColor0', 'Color 0 (Dim)', '#2D505A', {
                                 visibleWhen: [{ key: 'palette', equals: 'custom' }],
                             }),
-                            prop.color('customColor1', 'Color 1 (Tail)', '#439B87', {
+                            prop.color('customColor1', 'Color 1', '#439B87', {
                                 visibleWhen: [{ key: 'palette', equals: 'custom' }],
                             }),
-                            prop.color('customColor2', 'Color 2 (Head)', '#6EE4E3', {
+                            prop.color('customColor2', 'Color 2', '#6EE4E3', {
                                 visibleWhen: [{ key: 'palette', equals: 'custom' }],
                             }),
-                            prop.color('customColor3', 'Color 3 (Ripple)', '#EEF2A9', {
+                            prop.color('customColor3', 'Color 3 (Bright)', '#EEF2A9', {
                                 visibleWhen: [{ key: 'palette', equals: 'custom' }],
                             }),
                         ],
@@ -113,11 +159,33 @@ export class AmurulikePianorollElement extends SceneElement {
         );
     }
 
+    // ── Intensity matrix helpers ──────────────────────────────────────────────
+
+    /**
+     * Write an intensity value at (col, row), keeping the maximum of the old
+     * and new value. Fractional coordinates are rounded; out-of-bounds are ignored.
+     */
+    protected _writeIntensity(
+        matrix: IntensityMatrix,
+        cols: number,
+        rows: number,
+        col: number,
+        row: number,
+        value: number
+    ): void {
+        const c = Math.round(col);
+        const r = Math.round(row);
+        if (c < 0 || c >= cols || r < 0 || r >= rows) return;
+        const idx = r * cols + c;
+        matrix[idx] = Math.max(matrix[idx], value);
+    }
+
+    // ── Render ────────────────────────────────────────────────────────────────
+
     protected override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
         const p = this.getSchemaProps();
         if (!p.visible) return [];
 
-        // ── Props ────────────────────────────────────────────────────────────
         const cols = Math.max(1, Math.round(p.cols as number));
         const rows = Math.max(1, Math.round(p.rows as number));
         const cellSize = Math.max(1, Math.round(p.cellSize as number));
@@ -127,57 +195,46 @@ export class AmurulikePianorollElement extends SceneElement {
         const windowDuration = Math.max(0.1, p.windowDuration as number);
         const playheadFraction = Math.max(0.01, Math.min(0.99, p.playheadFraction as number));
         const playheadCol = Math.round(cols * playheadFraction);
-
-        const tailLength = Math.max(1, Math.round(p.tailLength as number));
-        const tailOscFreq = p.tailOscFreq as number;
-        const tailOscAmp = p.tailOscAmp as number;
-        const slowFactor = Math.max(0, Math.min(1, p.slowFactor as number));
-        const fadeOutDuration = Math.max(0.01, p.fadeOutDuration as number);
-        const rippleExpandSpeed = Math.max(1, p.rippleExpandSpeed as number);
-        const rippleDuration = Math.max(0.01, p.rippleDuration as number);
+        const maxColsPerSec = cols / windowDuration;
+        const postHitSlowFactor = Math.max(0, Math.min(1, p.postHitSlowFactor as number));
 
         // ── Palette ──────────────────────────────────────────────────────────
-        const paletteName = p.palette as string;
         const paletteHex =
-            paletteName === 'custom'
+            (p.palette as string) === 'custom'
                 ? [
                       (p.customColor0 as string) ?? '#2D505A',
                       (p.customColor1 as string) ?? '#439B87',
                       (p.customColor2 as string) ?? '#6EE4E3',
                       (p.customColor3 as string) ?? '#EEF2A9',
                   ]
-                : [...(NAMED_PALETTES[paletteName] ?? NAMED_PALETTES.seafoam)];
+                : [...(NAMED_PALETTES[p.palette as string] ?? NAMED_PALETTES.seafoam)];
 
-        const [_bg, tailRgb, headRgb, rippleRgb] = paletteHex.map(parseHex6) as [
-            [number, number, number],
-            [number, number, number],
-            [number, number, number],
-            [number, number, number],
-        ];
+        const palette = paletteHex.map(parseHex6) as [number, number, number][];
 
-        // ── Pixel buffer (transparent background) ────────────────────────────
-        const buf = new PixelBuffer(cols, rows);
+        // ── Intensity matrix ─────────────────────────────────────────────────
+        const matSize = cols * rows;
+        if (!this._matrix || this._matrix.length !== matSize) {
+            this._matrix = new Float32Array(matSize);
+        } else {
+            this._matrix.fill(0);
+        }
+        const matrix = this._matrix;
 
-        // ── Draw notes ───────────────────────────────────────────────────────
-        const { api, status } = getPluginHostApi([PLUGIN_CAPABILITIES.timelineRead]);
+        // ── Build logical model and accumulate intensities ────────────────────
+        const host = getRequiredPluginApi(this, [PLUGIN_CAPABILITIES.timelineRead]);
+        if (!host.ok) return host.renderFallback();
 
-        if (api && status === 'ok' && p.midiTrackId) {
-            const normalColsPerSec = cols / windowDuration;
-            const slowColsPerSec = normalColsPerSec * slowFactor;
-
-            const queryStart = targetTime - playheadFraction * windowDuration - rippleDuration - fadeOutDuration;
+        if (p.midiTrackId) {
+            const queryStart = targetTime - playheadFraction * windowDuration - 4;
             const queryEnd = targetTime + (1 - playheadFraction) * windowDuration;
 
-            const notes = api.timeline.selectNotesInWindow({
+            const notes = host.api.timeline.selectNotesInWindow({
                 trackIds: [p.midiTrackId as string],
                 startSec: queryStart,
                 endSec: queryEnd,
             });
 
-            // Sort so lower-velocity notes render first (higher velocity draws on top)
             notes.sort((a, b) => (a.velocity ?? 64) - (b.velocity ?? 64));
-
-            const tailPhase = targetTime * tailOscFreq * Math.PI * 2;
 
             for (const n of notes) {
                 if (n.note < minNote || n.note > maxNote) continue;
@@ -185,75 +242,135 @@ export class AmurulikePianorollElement extends SceneElement {
                 const timeToNote = n.startTime - targetTime;
                 const elapsed = -timeToNote;
 
-                // X: normal speed before playhead, slowed after
-                const noteCol =
-                    timeToNote >= 0
-                        ? playheadCol + timeToNote * normalColsPerSec
-                        : playheadCol - elapsed * slowColsPerSec;
+                let noteId = `${n.startTime}_${n.note}`;
 
-                // Y: pitch mapped to row (high note → top row)
+                let colsPerSec = timeToNote >= 0 ? maxColsPerSec : maxColsPerSec * postHitSlowFactor;
+
+                // Before playhead: travel at colsPerSec. After: slow by postHitSlowFactor.
+                const noteCol = playheadCol + timeToNote * colsPerSec;
+
                 const noteRow = Math.round(((maxNote - n.note) / noteRange) * (rows - 1));
 
-                // Alpha: fade out after crossing playhead
-                const fadeAlpha = elapsed <= 0 ? 1.0 : Math.max(0, 1 - elapsed / fadeOutDuration);
-                if (fadeAlpha <= 0) continue;
+                const info: NoteRenderInfo = {
+                    col: noteCol,
+                    row: noteRow,
+                    elapsed,
+                    note: n.note,
+                    velocity: n.velocity ?? 64,
+                };
 
-                // ── Tail — trails rightward (direction note came from) ────────
-                for (let i = 1; i <= tailLength; i++) {
-                    const tailCol = noteCol + i;
-                    const rowOff = Math.sin(tailPhase - i * 0.6) * tailOscAmp;
-                    const tailAlpha = fadeAlpha * (1 - i / (tailLength + 1));
-                    buf.drawPixelDithered(tailCol, noteRow + rowOff, tailRgb, tailAlpha);
+                // Draw Head
+                let fadeOutDuration = 10;
+
+                let headIntensity =
+                    elapsed >= 0 ? af.remap(0, 1, 1, 0, af.clamp(1 / fadeOutDuration, 0, 1) * elapsed) : 1;
+                this._writeIntensity(matrix, cols, rows, info.col, info.row, headIntensity);
+
+                // Draw Tail
+                let exhaustSpeed = 8;
+                let tailLengthFactor = 0.2;
+                let tailWidth = 4;
+                let tailFadeStagger = 5;
+
+                let tailTaper = new af.FloatCurve([
+                    [0, 0, af.easings.linear],
+                    [1, 1, af.easings.linear],
+                ]);
+
+                let tailIntensityCurve = new af.FloatCurve([
+                    [0, 0.5, af.easings.linear],
+                    [0.9, 0.25, af.easings.linear],
+                    [1, 0, af.easings.linear],
+                ]);
+
+                for (let i = 1; i < maxColsPerSec * tailLengthFactor; i++) {
+                    let rng = alea(`${noteId}_${Math.round(info.col) + i - Math.round(targetTime * exhaustSpeed)}`);
+                    let tailProgress = i / (maxColsPerSec * tailLengthFactor);
+                    let tailEnv = tailTaper.valAt(tailProgress) * tailWidth;
+                    let tailBlockIntensity =
+                        elapsed >= 0
+                            ? tailIntensityCurve.valAt(af.clamp(elapsed - tailProgress * tailFadeStagger, 0, 1))
+                            : 0.5;
+                    this._writeIntensity(
+                        matrix,
+                        cols,
+                        rows,
+                        info.col + i,
+                        info.row + Math.round(af.remap(0, 1, -1, 1, rng()) * tailEnv),
+                        tailBlockIntensity
+                    );
                 }
 
-                // ── Head pixel ───────────────────────────────────────────────
-                buf.drawPixelDithered(noteCol, noteRow, headRgb, fadeAlpha);
+                // Draw Ripple
+                const rippleThickness = 4;
+                let rippleSize = 16;
+                let probeRadius = 20;
+                let rippleTime = 1;
 
-                // ── Ripple at playhead when note crosses ─────────────────────
-                if (elapsed >= 0 && elapsed < rippleDuration) {
-                    const rippleAlpha = (1 - elapsed / rippleDuration) * fadeAlpha;
-                    const outerRadius = Math.floor(elapsed * rippleExpandSpeed);
-                    const innerRadius = outerRadius - 3;
+                let rippleProgress = elapsed / rippleTime;
 
-                    // Outer diamond ring
-                    if (outerRadius >= 1) {
-                        for (let dc = -outerRadius; dc <= outerRadius; dc++) {
-                            for (let dr = -outerRadius; dr <= outerRadius; dr++) {
-                                if (Math.abs(dc) + Math.abs(dr) === outerRadius) {
-                                    buf.drawPixelDithered(playheadCol + dc, noteRow + dr, rippleRgb, rippleAlpha);
-                                }
-                            }
-                        }
-                    }
+                let radiusTimeCurve = new af.FloatCurve([
+                    [0, 0, af.easings.easeOutExpo],
+                    [1, rippleSize, af.easings.easeOutExpo],
+                ]);
 
-                    // Inner trailing ring (subtler)
-                    if (innerRadius >= 1) {
-                        for (let dc = -innerRadius; dc <= innerRadius; dc++) {
-                            for (let dr = -innerRadius; dr <= innerRadius; dr++) {
-                                if (Math.abs(dc) + Math.abs(dr) === innerRadius) {
-                                    buf.drawPixelDithered(playheadCol + dc, noteRow + dr, rippleRgb, rippleAlpha * 0.5);
-                                }
-                            }
+                let intensityTimeCurve = new af.FloatCurve([
+                    [0, 1, af.easings.linear],
+                    [1, 0, af.easings.linear],
+                ]);
+
+                function rot45(x: number, y: number): [number, number] {
+                    const cos45 = Math.cos(Math.PI / 4);
+                    const sin45 = Math.sin(Math.PI / 4);
+                    return [x * cos45 - y * sin45, x * sin45 + y * cos45];
+                }
+
+                function squareFunct(length: number, x: number, y: number) {
+                    let newXY = rot45(x, y);
+                    return Math.abs(length / 2 - Math.max(Math.abs(newXY[0]), Math.abs(newXY[1])));
+                }
+
+                function distToIntensity(dist: number, thickness: number) {
+                    return af.clamp(1 - dist / thickness, 0, 1);
+                }
+
+                if (elapsed >= 0 && elapsed < rippleTime) {
+                    for (let i = -probeRadius; i <= probeRadius; i++) {
+                        for (let j = -probeRadius; j <= probeRadius; j++) {
+                            this._writeIntensity(
+                                matrix,
+                                cols,
+                                rows,
+                                playheadCol + i,
+                                info.row + j,
+                                intensityTimeCurve.valAt(rippleProgress) *
+                                    distToIntensity(
+                                        squareFunct(radiusTimeCurve.valAt(rippleProgress), i, j),
+                                        rippleThickness
+                                    )
+                            );
                         }
                     }
                 }
             }
         }
 
-        // ── Create / update grid render object ───────────────────────────────
+        // ── Convert intensity matrix → RGBA via 5-level dithering ────────────
+        const pixelData = intensityToPixels(matrix, cols, rows, palette);
+
+        // ── Create / update grid render object ────────────────────────────────
+        const needNew =
+            !this._grid || this._grid.cols !== cols || this._grid.rows !== rows || this._grid.width !== cols * cellSize;
+
         const totalW = cols * cellSize;
         const totalH = rows * cellSize;
         const ox = -totalW / 2;
         const oy = -totalH / 2;
 
-        const needNew =
-            !this._grid || this._grid.cols !== cols || this._grid.rows !== rows ||
-            this._grid.width !== cols * cellSize;
-
         if (needNew) {
-            this._grid = new PixelGrid(ox, oy, cols, rows, cellSize, { pixels: buf.data });
+            this._grid = new PixelGrid(ox, oy, cols, rows, cellSize, { pixels: pixelData });
         } else {
-            this._grid!.updatePixels(buf.data);
+            this._grid!.updatePixels(pixelData);
         }
 
         return [this._grid!];
