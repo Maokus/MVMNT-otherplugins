@@ -42,6 +42,45 @@ const NAMED_PALETTES: Record<string, readonly string[]> = {
     dusk: ['#1A0D2E', '#4A1A6E', '#CC44CC', '#FFE04A'],
 };
 
+// ── Ripple shape functions ────────────────────────────────────────────────────
+// Each returns the distance from point (x, y) to the ideal ring of the given radius.
+// Lower distance = more intense pixel. Feed into distToIntensity().
+
+const SQRT1_2 = Math.SQRT1_2;
+
+/** Square (diamond-outline) ripple. */
+function squareRipple(radius: number, x: number, y: number): number {
+    return Math.abs(radius - Math.max(Math.abs(x), Math.abs(y)));
+}
+
+/** Euclidean circle ripple. */
+function circleRipple(radius: number, x: number, y: number): number {
+    return Math.abs(radius - Math.sqrt(x * x + y * y));
+}
+
+/** Manhattan / L1 diamond ripple (axis-aligned diamond outline). */
+function diamondRipple(radius: number, x: number, y: number): number {
+    return Math.abs(radius - (Math.abs(x) + Math.abs(y)));
+}
+
+/** Plus / cross ripple — ring along the cardinal axes. */
+function plusRipple(radius: number, x: number, y: number): number {
+    const dH = Math.max(Math.abs(Math.abs(x) - radius), Math.abs(y));
+    const dV = Math.max(Math.abs(Math.abs(y) - radius), Math.abs(x));
+    return Math.min(dH, dV);
+}
+
+const RIPPLE_SHAPES: Record<string, (radius: number, x: number, y: number) => number> = {
+    square: squareRipple,
+    circle: circleRipple,
+    diamond: diamondRipple,
+    plus: plusRipple,
+};
+
+function distToIntensity(dist: number, thickness: number): number {
+    return af.clamp(1 - dist / thickness, 0, 1);
+}
+
 // ── Intensity → pixel rendering ───────────────────────────────────────────────
 
 /**
@@ -111,6 +150,11 @@ export class AmurulikePianorollElement extends SceneElement {
                             prop.number('cols', 'Grid Columns', 160, { min: 40, max: 400, step: 1 }),
                             prop.number('rows', 'Grid Rows', 90, { min: 20, max: 200, step: 1 }),
                             prop.number('cellSize', 'Cell Size (px)', 6, { min: 1, max: 32, step: 1 }),
+                            prop.number('paddingRows', 'Padding Rows', 10, {
+                                min: 0,
+                                max: 40,
+                                step: 1,
+                            }),
                             prop.number('minNote', 'Min MIDI Note', 36, { min: 0, max: 127, step: 1 }),
                             prop.number('maxNote', 'Max MIDI Note', 84, { min: 0, max: 127, step: 1 }),
                             prop.number('windowDuration', 'Time Window (s)', 4, { min: 0.5, max: 20, step: 0.5 }),
@@ -154,6 +198,49 @@ export class AmurulikePianorollElement extends SceneElement {
                             }),
                         ],
                     },
+                    {
+                        id: 'noteHead',
+                        label: 'Note Head',
+                        collapsed: false,
+                        properties: [
+                            prop.number('fadeOutDuration', 'Fade Out Duration (s)', 10, {
+                                min: 0.1,
+                                max: 30,
+                                step: 0.1,
+                            }),
+                        ],
+                    },
+                    {
+                        id: 'tail',
+                        label: 'Tail',
+                        collapsed: false,
+                        properties: [
+                            prop.number('tailLength', 'Tail Length (cols)', 8, { min: 0, max: 80, step: 1 }),
+                            prop.number('tailWidth', 'Tail Width (rows)', 4, { min: 0, max: 20, step: 1 }),
+                            prop.number('exhaustSpeed', 'Exhaust Speed', 8, { min: 0.1, max: 40, step: 0.1 }),
+                            prop.number('tailFadeStagger', 'Tail Fade Stagger (s)', 5, {
+                                min: 0,
+                                max: 20,
+                                step: 0.1,
+                            }),
+                        ],
+                    },
+                    {
+                        id: 'ripple',
+                        label: 'Ripple',
+                        collapsed: false,
+                        properties: [
+                            prop.select('rippleShape', 'Ripple Shape', 'diamond', [
+                                { value: 'square', label: 'Square' },
+                                { value: 'circle', label: 'Circle' },
+                                { value: 'diamond', label: 'Diamond' },
+                                { value: 'plus', label: 'Plus' },
+                            ]),
+                            prop.number('rippleSize', 'Ripple Size (cols)', 10, { min: 1, max: 60, step: 1 }),
+                            prop.number('rippleThickness', 'Ripple Thickness', 4, { min: 1, max: 20, step: 1 }),
+                            prop.number('rippleTime', 'Ripple Duration (s)', 1, { min: 0.1, max: 5, step: 0.05 }),
+                        ],
+                    },
                 ]),
             ]
         );
@@ -189,6 +276,7 @@ export class AmurulikePianorollElement extends SceneElement {
         const cols = Math.max(1, Math.round(p.cols as number));
         const rows = Math.max(1, Math.round(p.rows as number));
         const cellSize = Math.max(1, Math.round(p.cellSize as number));
+        const paddingRows = Math.max(0, Math.round(p.paddingRows as number));
         const minNote = Math.max(0, Math.min(127, Math.round(p.minNote as number)));
         const maxNote = Math.max(0, Math.min(127, Math.round(p.maxNote as number)));
         const noteRange = Math.max(1, maxNote - minNote);
@@ -197,6 +285,22 @@ export class AmurulikePianorollElement extends SceneElement {
         const playheadCol = Math.round(cols * playheadFraction);
         const maxColsPerSec = cols / windowDuration;
         const postHitSlowFactor = Math.max(0, Math.min(1, p.postHitSlowFactor as number));
+
+        // Note appearance
+        const fadeOutDuration = Math.max(0.1, p.fadeOutDuration as number);
+
+        // Tail
+        const tailLength = Math.max(0, Math.round(p.tailLength as number));
+        const tailWidth = Math.max(0, p.tailWidth as number);
+        const exhaustSpeed = Math.max(0.1, p.exhaustSpeed as number);
+        const tailFadeStagger = Math.max(0, p.tailFadeStagger as number);
+
+        // Ripple
+        const rippleShape = RIPPLE_SHAPES[(p.rippleShape as string) ?? 'square'] ?? squareRipple;
+        const rippleSize = Math.max(1, p.rippleSize as number);
+        const rippleThickness = Math.max(1, p.rippleThickness as number);
+        const rippleTime = Math.max(0.1, p.rippleTime as number);
+        const probeRadius = Math.ceil(rippleSize + rippleThickness) * 1.5;
 
         // ── Palette ──────────────────────────────────────────────────────────
         const paletteHex =
@@ -220,6 +324,28 @@ export class AmurulikePianorollElement extends SceneElement {
         }
         const matrix = this._matrix;
 
+        // ── Shared curves (allocated once per frame, not per note) ────────────
+        const tailTaper = new af.FloatCurve([
+            [0, 0, af.easings.linear],
+            [1, 1, af.easings.linear],
+        ]);
+
+        const tailIntensityCurve = new af.FloatCurve([
+            [0, 0.5, af.easings.linear],
+            [0.9, 0.25, af.easings.linear],
+            [1, 0, af.easings.linear],
+        ]);
+
+        const radiusTimeCurve = new af.FloatCurve([
+            [0, 0, af.easings.easeOutExpo],
+            [1, rippleSize, af.easings.easeOutExpo],
+        ]);
+
+        const intensityTimeCurve = new af.FloatCurve([
+            [0, 1, af.easings.linear],
+            [1, 0, af.easings.linear],
+        ]);
+
         // ── Build logical model and accumulate intensities ────────────────────
         const host = getRequiredPluginApi(this, [PLUGIN_CAPABILITIES.timelineRead]);
         if (!host.ok) return host.renderFallback();
@@ -236,20 +362,21 @@ export class AmurulikePianorollElement extends SceneElement {
 
             notes.sort((a, b) => (a.velocity ?? 64) - (b.velocity ?? 64));
 
+            // Usable row range after padding — notes are mapped into [paddingRows, rows-1-paddingRows]
+            const rowStart = paddingRows;
+            const rowSpan = Math.max(1, rows - 1 - 2 * paddingRows);
+
             for (const n of notes) {
                 if (n.note < minNote || n.note > maxNote) continue;
 
                 const timeToNote = n.startTime - targetTime;
                 const elapsed = -timeToNote;
 
-                let noteId = `${n.startTime}_${n.note}`;
+                const noteId = `${n.startTime}_${n.note}`;
 
-                let colsPerSec = timeToNote >= 0 ? maxColsPerSec : maxColsPerSec * postHitSlowFactor;
-
-                // Before playhead: travel at colsPerSec. After: slow by postHitSlowFactor.
+                const colsPerSec = timeToNote >= 0 ? maxColsPerSec : maxColsPerSec * postHitSlowFactor;
                 const noteCol = playheadCol + timeToNote * colsPerSec;
-
-                const noteRow = Math.round(((maxNote - n.note) / noteRange) * (rows - 1));
+                const noteRow = rowStart + Math.round(((maxNote - n.note) / noteRange) * rowSpan);
 
                 const info: NoteRenderInfo = {
                     col: noteCol,
@@ -259,35 +386,17 @@ export class AmurulikePianorollElement extends SceneElement {
                     velocity: n.velocity ?? 64,
                 };
 
-                // Draw Head
-                let fadeOutDuration = 10;
-
-                let headIntensity =
-                    elapsed >= 0 ? af.remap(0, 1, 1, 0, af.clamp(1 / fadeOutDuration, 0, 1) * elapsed) : 1;
+                // ── Head ─────────────────────────────────────────────────────
+                const headIntensity =
+                    elapsed >= 0 ? af.remap(0, 1, 1, 0, af.clamp((1 / fadeOutDuration) * elapsed, 0, 1)) : 1;
                 this._writeIntensity(matrix, cols, rows, info.col, info.row, headIntensity);
 
-                // Draw Tail
-                let exhaustSpeed = 8;
-                let tailLengthFactor = 0.2;
-                let tailWidth = 4;
-                let tailFadeStagger = 5;
-
-                let tailTaper = new af.FloatCurve([
-                    [0, 0, af.easings.linear],
-                    [1, 1, af.easings.linear],
-                ]);
-
-                let tailIntensityCurve = new af.FloatCurve([
-                    [0, 0.5, af.easings.linear],
-                    [0.9, 0.25, af.easings.linear],
-                    [1, 0, af.easings.linear],
-                ]);
-
-                for (let i = 1; i < maxColsPerSec * tailLengthFactor; i++) {
-                    let rng = alea(`${noteId}_${Math.round(info.col) + i - Math.round(targetTime * exhaustSpeed)}`);
-                    let tailProgress = i / (maxColsPerSec * tailLengthFactor);
-                    let tailEnv = tailTaper.valAt(tailProgress) * tailWidth;
-                    let tailBlockIntensity =
+                // ── Tail ─────────────────────────────────────────────────────
+                for (let i = 1; i < tailLength; i++) {
+                    const rng = alea(`${noteId}_${Math.round(info.col) + i - Math.round(targetTime * exhaustSpeed)}`);
+                    const tailProgress = i / tailLength;
+                    const tailEnv = tailTaper.valAt(tailProgress) * tailWidth;
+                    const tailBlockIntensity =
                         elapsed >= 0
                             ? tailIntensityCurve.valAt(af.clamp(elapsed - tailProgress * tailFadeStagger, 0, 1))
                             : 0.5;
@@ -301,40 +410,12 @@ export class AmurulikePianorollElement extends SceneElement {
                     );
                 }
 
-                // Draw Ripple
-                const rippleThickness = 4;
-                let rippleSize = 16;
-                let probeRadius = 20;
-                let rippleTime = 1;
-
-                let rippleProgress = elapsed / rippleTime;
-
-                let radiusTimeCurve = new af.FloatCurve([
-                    [0, 0, af.easings.easeOutExpo],
-                    [1, rippleSize, af.easings.easeOutExpo],
-                ]);
-
-                let intensityTimeCurve = new af.FloatCurve([
-                    [0, 1, af.easings.linear],
-                    [1, 0, af.easings.linear],
-                ]);
-
-                function rot45(x: number, y: number): [number, number] {
-                    const cos45 = Math.cos(Math.PI / 4);
-                    const sin45 = Math.sin(Math.PI / 4);
-                    return [x * cos45 - y * sin45, x * sin45 + y * cos45];
-                }
-
-                function squareFunct(length: number, x: number, y: number) {
-                    let newXY = rot45(x, y);
-                    return Math.abs(length / 2 - Math.max(Math.abs(newXY[0]), Math.abs(newXY[1])));
-                }
-
-                function distToIntensity(dist: number, thickness: number) {
-                    return af.clamp(1 - dist / thickness, 0, 1);
-                }
-
+                // ── Ripple ───────────────────────────────────────────────────
                 if (elapsed >= 0 && elapsed < rippleTime) {
+                    const rippleProgress = elapsed / rippleTime;
+                    const currentRadius = radiusTimeCurve.valAt(rippleProgress);
+                    const ringIntensity = intensityTimeCurve.valAt(rippleProgress);
+
                     for (let i = -probeRadius; i <= probeRadius; i++) {
                         for (let j = -probeRadius; j <= probeRadius; j++) {
                             this._writeIntensity(
@@ -343,11 +424,7 @@ export class AmurulikePianorollElement extends SceneElement {
                                 rows,
                                 playheadCol + i,
                                 info.row + j,
-                                intensityTimeCurve.valAt(rippleProgress) *
-                                    distToIntensity(
-                                        squareFunct(radiusTimeCurve.valAt(rippleProgress), i, j),
-                                        rippleThickness
-                                    )
+                                ringIntensity * distToIntensity(rippleShape(currentRadius, i, j), rippleThickness)
                             );
                         }
                     }
