@@ -1,15 +1,7 @@
 import { SceneElement, prop, insertElementConfig, tab, type RenderObject } from '@mvmnt/plugin-sdk';
 import { BoxRenderObject, PixelGrid, type RenderConfig } from '@mvmnt/plugin-sdk/render';
 import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
-
-// ── Bayer 4×4 ordered dither matrix, values normalised to [0, 1) ─────────────
-
-const BAYER4: readonly (readonly number[])[] = [
-    [0 / 16, 8 / 16, 2 / 16, 10 / 16],
-    [12 / 16, 4 / 16, 14 / 16, 6 / 16],
-    [3 / 16, 11 / 16, 1 / 16, 9 / 16],
-    [15 / 16, 7 / 16, 13 / 16, 5 / 16],
-];
+import { BAYER4, parseHexRGBA, PixelBuffer } from './pixel-buffer';
 
 // ── Noise helpers ─────────────────────────────────────────────────────────────
 
@@ -91,21 +83,6 @@ function noDither(_col: number, _row: number): number {
 
 function randomDither(col: number, row: number): number {
     return hash3(col * 2753, row * 4999, 0);
-}
-
-// ── CSS #RRGGBBAA → [r, g, b, a] ─────────────────────────────────────────────
-
-function parseHexRGBA(hex: string): [number, number, number, number] {
-    const c = hex.replace('#', '');
-    if (c.length === 8) {
-        return [
-            parseInt(c.slice(0, 2), 16),
-            parseInt(c.slice(2, 4), 16),
-            parseInt(c.slice(4, 6), 16),
-            parseInt(c.slice(6, 8), 16),
-        ];
-    }
-    return [parseInt(c.slice(0, 2), 16), parseInt(c.slice(2, 4), 16), parseInt(c.slice(4, 6), 16), 255];
 }
 
 // ── GappedPixelGrid — upscale-and-clear gapped pixel grid renderer ────────────
@@ -393,8 +370,8 @@ export class DitheratorElement extends SceneElement {
         const cosR = Math.cos(texRotateRad);
         const sinR = Math.sin(texRotateRad);
 
-        const pixels = new Uint8ClampedArray(cols * rows * 4);
-        const secondaryPixels = secondaryEnabled ? new Uint8ClampedArray(cols * rows * 4) : null;
+        const primaryBuf = new PixelBuffer(cols, rows);
+        const secondaryBuf = secondaryEnabled ? new PixelBuffer(cols, rows) : null;
 
         for (let row = 0; row < rows; row++) {
             for (let col = 0; col < cols; col++) {
@@ -407,17 +384,10 @@ export class DitheratorElement extends SceneElement {
                 const base = getBase(u, v, evolution);
                 const dither = getDither(col, row);
                 const combined = base * textureStrength + dither * bayerStrength;
-                const idx = (row * cols + col) * 4;
                 if (combined > threshold) {
-                    pixels[idx] = r;
-                    pixels[idx + 1] = g;
-                    pixels[idx + 2] = b;
-                    pixels[idx + 3] = a;
-                } else if (secondaryPixels && combined > secondaryThreshold) {
-                    secondaryPixels[idx] = sr;
-                    secondaryPixels[idx + 1] = sg;
-                    secondaryPixels[idx + 2] = sb;
-                    secondaryPixels[idx + 3] = sa;
+                    primaryBuf.setPixel(col, row, r, g, b, a);
+                } else if (secondaryBuf && combined > secondaryThreshold) {
+                    secondaryBuf.setPixel(col, row, sr, sg, sb, sa);
                 }
             }
         }
@@ -430,15 +400,15 @@ export class DitheratorElement extends SceneElement {
             this._primaryGrid.gap !== cellGap;
 
         if (needNewPrimary) {
-            this._primaryGrid = new GappedPixelGrid(ox, oy, cols, rows, cellSize, cellGap, pixels);
+            this._primaryGrid = new GappedPixelGrid(ox, oy, cols, rows, cellSize, cellGap, primaryBuf.data);
         } else {
-            this._primaryGrid!.updatePixels(pixels);
+            this._primaryGrid!.updatePixels(primaryBuf.data);
         }
         const primaryGrid = this._primaryGrid!;
 
         const result: RenderObject[] = [primaryGrid];
 
-        if (secondaryPixels) {
+        if (secondaryBuf) {
             const needNewSecondary =
                 !this._secondaryGrid ||
                 this._secondaryGrid.cols !== cols ||
@@ -454,10 +424,10 @@ export class DitheratorElement extends SceneElement {
                     rows,
                     cellSize,
                     secondaryCellGap,
-                    secondaryPixels
+                    secondaryBuf.data
                 );
             } else {
-                this._secondaryGrid!.updatePixels(secondaryPixels);
+                this._secondaryGrid!.updatePixels(secondaryBuf.data);
             }
             result.push(this._secondaryGrid!);
         } else {

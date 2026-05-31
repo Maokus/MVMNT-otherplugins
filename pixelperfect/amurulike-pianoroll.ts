@@ -9,14 +9,7 @@ import {
 } from '@mvmnt/plugin-sdk';
 import { PixelGrid } from '@mvmnt/plugin-sdk/render';
 import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
-
-// ── Bayer 4×4 ordered dither matrix (normalised to [0, 1)) ───────────────────
-const BAYER4: readonly (readonly number[])[] = [
-    [0 / 16, 8 / 16, 2 / 16, 10 / 16],
-    [12 / 16, 4 / 16, 14 / 16, 6 / 16],
-    [3 / 16, 11 / 16, 1 / 16, 9 / 16],
-    [15 / 16, 7 / 16, 13 / 16, 5 / 16],
-];
+import { parseHex6, PixelBuffer } from './pixel-buffer';
 
 // ── Palette definitions ──────────────────────────────────────────────────────
 // Index 0: background, 1: tail, 2: note head, 3: ripple/accent
@@ -26,11 +19,6 @@ const NAMED_PALETTES: Record<string, readonly string[]> = {
     lemon: ['#1A2A1A', '#3D7A3D', '#A8D84A', '#FFFFF0'],
     dusk: ['#1A0D2E', '#4A1A6E', '#CC44CC', '#FFE04A'],
 };
-
-function parseHex6(hex: string): [number, number, number] {
-    const c = hex.replace('#', '');
-    return [parseInt(c.slice(0, 2), 16), parseInt(c.slice(2, 4), 16), parseInt(c.slice(4, 6), 16)];
-}
 
 // ── Element ──────────────────────────────────────────────────────────────────
 export class AmurulikePianorollElement extends SceneElement {
@@ -160,34 +148,15 @@ export class AmurulikePianorollElement extends SceneElement {
                   ]
                 : [...(NAMED_PALETTES[paletteName] ?? NAMED_PALETTES.seafoam)];
 
-        const [bg, tailRgb, headRgb, rippleRgb] = paletteHex.map(parseHex6) as [
+        const [_bg, tailRgb, headRgb, rippleRgb] = paletteHex.map(parseHex6) as [
             [number, number, number],
             [number, number, number],
             [number, number, number],
             [number, number, number],
         ];
 
-        // ── Pixel buffer ─────────────────────────────────────────────────────
-        const pixels = new Uint8ClampedArray(cols * rows * 4);
-        for (let i = 0; i < cols * rows; i++) {
-            pixels[i * 4] = bg[0];
-            pixels[i * 4 + 1] = bg[1];
-            pixels[i * 4 + 2] = bg[2];
-            pixels[i * 4 + 3] = 255;
-        }
-
-        // Bayer-dithered pixel write — maintains 4-colour constraint for transparency
-        const drawPixel = (col: number, row: number, rgb: [number, number, number], alpha: number): void => {
-            const c = Math.round(col);
-            const r = Math.round(row);
-            if (c < 0 || c >= cols || r < 0 || r >= rows) return;
-            if (alpha < 1 && alpha <= BAYER4[r & 3][c & 3]) return;
-            const idx = (r * cols + c) * 4;
-            pixels[idx] = rgb[0];
-            pixels[idx + 1] = rgb[1];
-            pixels[idx + 2] = rgb[2];
-            pixels[idx + 3] = 255;
-        };
+        // ── Pixel buffer (transparent background) ────────────────────────────
+        const buf = new PixelBuffer(cols, rows);
 
         // ── Draw notes ───────────────────────────────────────────────────────
         const { api, status } = getPluginHostApi([PLUGIN_CAPABILITIES.timelineRead]);
@@ -234,11 +203,11 @@ export class AmurulikePianorollElement extends SceneElement {
                     const tailCol = noteCol + i;
                     const rowOff = Math.sin(tailPhase - i * 0.6) * tailOscAmp;
                     const tailAlpha = fadeAlpha * (1 - i / (tailLength + 1));
-                    drawPixel(tailCol, noteRow + rowOff, tailRgb, tailAlpha);
+                    buf.drawPixelDithered(tailCol, noteRow + rowOff, tailRgb, tailAlpha);
                 }
 
                 // ── Head pixel ───────────────────────────────────────────────
-                drawPixel(noteCol, noteRow, headRgb, fadeAlpha);
+                buf.drawPixelDithered(noteCol, noteRow, headRgb, fadeAlpha);
 
                 // ── Ripple at playhead when note crosses ─────────────────────
                 if (elapsed >= 0 && elapsed < rippleDuration) {
@@ -251,7 +220,7 @@ export class AmurulikePianorollElement extends SceneElement {
                         for (let dc = -outerRadius; dc <= outerRadius; dc++) {
                             for (let dr = -outerRadius; dr <= outerRadius; dr++) {
                                 if (Math.abs(dc) + Math.abs(dr) === outerRadius) {
-                                    drawPixel(playheadCol + dc, noteRow + dr, rippleRgb, rippleAlpha);
+                                    buf.drawPixelDithered(playheadCol + dc, noteRow + dr, rippleRgb, rippleAlpha);
                                 }
                             }
                         }
@@ -262,7 +231,7 @@ export class AmurulikePianorollElement extends SceneElement {
                         for (let dc = -innerRadius; dc <= innerRadius; dc++) {
                             for (let dr = -innerRadius; dr <= innerRadius; dr++) {
                                 if (Math.abs(dc) + Math.abs(dr) === innerRadius) {
-                                    drawPixel(playheadCol + dc, noteRow + dr, rippleRgb, rippleAlpha * 0.5);
+                                    buf.drawPixelDithered(playheadCol + dc, noteRow + dr, rippleRgb, rippleAlpha * 0.5);
                                 }
                             }
                         }
@@ -282,9 +251,9 @@ export class AmurulikePianorollElement extends SceneElement {
             this._grid.width !== cols * cellSize;
 
         if (needNew) {
-            this._grid = new PixelGrid(ox, oy, cols, rows, cellSize, { pixels });
+            this._grid = new PixelGrid(ox, oy, cols, rows, cellSize, { pixels: buf.data });
         } else {
-            this._grid!.updatePixels(pixels);
+            this._grid!.updatePixels(buf.data);
         }
 
         return [this._grid!];
