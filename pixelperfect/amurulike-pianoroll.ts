@@ -177,6 +177,7 @@ export class AmurulikePianorollElement extends SceneElement {
                         label: 'Palette',
                         collapsed: false,
                         properties: [
+                            prop.blendMode(),
                             prop.select('palette', 'Palette', 'seafoam', [
                                 { value: 'seafoam', label: 'Sea Foam' },
                                 { value: 'sakura', label: 'Sakura' },
@@ -208,6 +209,7 @@ export class AmurulikePianorollElement extends SceneElement {
                                 max: 30,
                                 step: 0.1,
                             }),
+                            prop.boolean('headVelIntensity', 'vel>intensity', false),
                         ],
                     },
                     {
@@ -223,6 +225,8 @@ export class AmurulikePianorollElement extends SceneElement {
                                 max: 20,
                                 step: 0.1,
                             }),
+                            prop.boolean('tailVelIntensity', 'vel>intensity', false),
+                            prop.boolean('tailVelLength', 'vel>length', false),
                         ],
                     },
                     {
@@ -239,6 +243,8 @@ export class AmurulikePianorollElement extends SceneElement {
                             prop.number('rippleSize', 'Ripple Size (cols)', 10, { min: 1, max: 60, step: 1 }),
                             prop.number('rippleThickness', 'Ripple Thickness', 4, { min: 1, max: 20, step: 1 }),
                             prop.number('rippleTime', 'Ripple Duration (s)', 1, { min: 0.1, max: 5, step: 0.05 }),
+                            prop.boolean('rippleVelIntensity', 'vel>intensity', false),
+                            prop.boolean('rippleVelSize', 'vel>size', false),
                         ],
                     },
                 ]),
@@ -276,6 +282,7 @@ export class AmurulikePianorollElement extends SceneElement {
         const cols = Math.max(1, Math.round(p.cols as number));
         const rows = Math.max(1, Math.round(p.rows as number));
         const cellSize = Math.max(1, Math.round(p.cellSize as number));
+        const blendMode = ((p.blendMode as string) ?? 'source-over') as GlobalCompositeOperation;
         const paddingRows = Math.max(0, Math.round(p.paddingRows as number));
         const minNote = Math.max(0, Math.min(127, Math.round(p.minNote as number)));
         const maxNote = Math.max(0, Math.min(127, Math.round(p.maxNote as number)));
@@ -288,18 +295,23 @@ export class AmurulikePianorollElement extends SceneElement {
 
         // Note appearance
         const fadeOutDuration = Math.max(0.1, p.fadeOutDuration as number);
+        const headVelIntensity = p.headVelIntensity as boolean;
 
         // Tail
         const tailLength = Math.max(0, Math.round(p.tailLength as number));
         const tailWidth = Math.max(0, p.tailWidth as number);
         const exhaustSpeed = Math.max(0.1, p.exhaustSpeed as number);
         const tailFadeStagger = Math.max(0, p.tailFadeStagger as number);
+        const tailVelIntensity = p.tailVelIntensity as boolean;
+        const tailVelLength = p.tailVelLength as boolean;
 
         // Ripple
         const rippleShape = RIPPLE_SHAPES[(p.rippleShape as string) ?? 'square'] ?? squareRipple;
         const rippleSize = Math.max(1, p.rippleSize as number);
         const rippleThickness = Math.max(1, p.rippleThickness as number);
         const rippleTime = Math.max(0.1, p.rippleTime as number);
+        const rippleVelIntensity = p.rippleVelIntensity as boolean;
+        const rippleVelSize = p.rippleVelSize as boolean;
         const probeRadius = Math.ceil(rippleSize + rippleThickness) * 1.5;
 
         // ── Palette ──────────────────────────────────────────────────────────
@@ -387,14 +399,19 @@ export class AmurulikePianorollElement extends SceneElement {
                 };
 
                 // ── Head ─────────────────────────────────────────────────────
+                const velNorm = info.velocity / 127;
                 const headIntensity =
                     elapsed >= 0 ? af.remap(0, 1, 1, 0, af.clamp((1 / fadeOutDuration) * elapsed, 0, 1)) : 1;
-                this._writeIntensity(matrix, cols, rows, info.col, info.row, headIntensity);
+                this._writeIntensity(
+                    matrix, cols, rows, info.col, info.row,
+                    headVelIntensity ? headIntensity * velNorm : headIntensity
+                );
 
                 // ── Tail ─────────────────────────────────────────────────────
-                for (let i = 1; i < tailLength; i++) {
+                const effectiveTailLength = tailVelLength ? Math.round(tailLength * velNorm) : tailLength;
+                for (let i = 1; i < effectiveTailLength; i++) {
                     const rng = alea(`${noteId}_${Math.round(info.col) + i - Math.round(targetTime * exhaustSpeed)}`);
-                    const tailProgress = i / tailLength;
+                    const tailProgress = i / effectiveTailLength;
                     const tailEnv = tailTaper.valAt(tailProgress) * tailWidth;
                     const tailBlockIntensity =
                         elapsed >= 0
@@ -406,25 +423,30 @@ export class AmurulikePianorollElement extends SceneElement {
                         rows,
                         info.col + i,
                         info.row + Math.round(af.remap(0, 1, -1, 1, rng()) * tailEnv),
-                        tailBlockIntensity
+                        tailVelIntensity ? tailBlockIntensity * velNorm : tailBlockIntensity
                     );
                 }
 
                 // ── Ripple ───────────────────────────────────────────────────
                 if (elapsed >= 0 && elapsed < rippleTime) {
                     const rippleProgress = elapsed / rippleTime;
-                    const currentRadius = radiusTimeCurve.valAt(rippleProgress);
+                    const velSizeScale = rippleVelSize ? velNorm : 1;
+                    const currentRadius = radiusTimeCurve.valAt(rippleProgress) * velSizeScale;
+                    const effectiveProbeRadius = rippleVelSize
+                        ? Math.ceil(currentRadius + rippleThickness) * 1.5
+                        : probeRadius;
                     const ringIntensity = intensityTimeCurve.valAt(rippleProgress);
+                    const effectiveRingIntensity = rippleVelIntensity ? ringIntensity * velNorm : ringIntensity;
 
-                    for (let i = -probeRadius; i <= probeRadius; i++) {
-                        for (let j = -probeRadius; j <= probeRadius; j++) {
+                    for (let i = -effectiveProbeRadius; i <= effectiveProbeRadius; i++) {
+                        for (let j = -effectiveProbeRadius; j <= effectiveProbeRadius; j++) {
                             this._writeIntensity(
                                 matrix,
                                 cols,
                                 rows,
                                 playheadCol + i,
                                 info.row + j,
-                                ringIntensity * distToIntensity(rippleShape(currentRadius, i, j), rippleThickness)
+                                effectiveRingIntensity * distToIntensity(rippleShape(currentRadius, i, j), rippleThickness)
                             );
                         }
                     }
@@ -449,6 +471,7 @@ export class AmurulikePianorollElement extends SceneElement {
         } else {
             this._grid!.updatePixels(pixelData);
         }
+        this._grid!.blendMode = blendMode !== 'source-over' ? blendMode : null;
 
         return [this._grid!];
     }
