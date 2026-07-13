@@ -1,0 +1,230 @@
+import {
+    Arc,
+    easings,
+    ensureFontLoaded,
+    parseFontSelection,
+    Rectangle,
+    SceneElement,
+    Text,
+    getRequiredPluginApi,
+    insertElementConfig,
+    PLUGIN_CAPABILITIES,
+    prop,
+    tab,
+    type RenderObject,
+} from '@mvmnt/plugin-sdk';
+import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
+
+const PITCH_CLASSES = [
+    { value: '0', label: 'C' },
+    { value: '1', label: 'C♯ / D♭' },
+    { value: '2', label: 'D' },
+    { value: '3', label: 'D♯ / E♭' },
+    { value: '4', label: 'E' },
+    { value: '5', label: 'F' },
+    { value: '6', label: 'F♯ / G♭' },
+    { value: '7', label: 'G' },
+    { value: '8', label: 'G♯ / A♭' },
+    { value: '9', label: 'A' },
+    { value: '10', label: 'A♯ / B♭' },
+    { value: '11', label: 'B' },
+] as const;
+
+// Ordered clockwise from the tonic: each step is an ascending perfect fifth.
+const CIRCLE_OF_FIFTHS = [0, 7, 2, 9, 4, 11, 6, 1, 8, 3, 10, 5];
+const DEGREE_LABELS = ['1', '♭2', '2', '♭3', '3', '4', '♭5', '5', '♭6', '6', '♭7', '7'];
+const DEGREE_COLORS = [
+    '#F97316', '#EF4444', '#EC4899', '#A855F7', '#6366F1', '#3B82F6',
+    '#06B6D4', '#14B8A6', '#22C55E', '#84CC16', '#EAB308', '#F59E0B',
+];
+const COLOR_SCHEMES: Record<string, string[]> = {
+    spectrum: DEGREE_COLORS,
+    ocean: [
+        '#F4D35E', '#EE964B', '#F95738', '#D1495B', '#A442A0', '#5C4B99',
+        '#3F6DB5', '#277DA1', '#1C9A9A', '#43AA8B', '#90BE6D', '#C7D36F',
+    ],
+    twilight: [
+        '#F9C74F', '#F9844A', '#F94144', '#C83E8C', '#8E5EA2', '#577590',
+        '#277DA1', '#43AA8B', '#90BE6D', '#B5C95A', '#E9C46A', '#F4A261',
+    ],
+};
+const ATTACK_DURATION_SECONDS = 0.24;
+
+function pitchClass(note: number): number {
+    return ((note % 12) + 12) % 12;
+}
+
+function excludeFromLayout<T extends RenderObject>(object: T): T {
+    return object.setLayoutParticipation('exclude');
+}
+
+export class SonofieldCircleElement extends SceneElement {
+    constructor(id: string = 'sonofield-circle', config: Record<string, unknown> = {}) {
+        super('sonofield-circle', id, config);
+    }
+
+    static override getConfigSchema(): EnhancedConfigSchema {
+        return insertElementConfig(
+            super.getConfigSchema(),
+            {
+                name: 'Sonofield Circle',
+                description: 'A circle-of-fifths map of the tonal function of active MIDI notes.',
+                category: 'us.maok.circleoffifths',
+            },
+            [
+                tab.content([
+                    {
+                        id: 'midiSource',
+                        label: 'MIDI Source',
+                        collapsed: false,
+                        properties: [
+                            prop.midiTrack('midiTrackId', 'MIDI Track', {
+                                description: 'Track whose active notes highlight scale degrees.',
+                            }),
+                            prop.select('tonicPitchClass', 'Tonic', '0', [...PITCH_CLASSES], {
+                                description: 'Set the tonal centre manually; MIDI octave does not matter.',
+                            }),
+                        ],
+                    },
+                ]),
+                tab.appearance([
+                    {
+                        id: 'circleAppearance',
+                        label: 'Circle',
+                        collapsed: false,
+                        properties: [
+                            prop.number('radius', 'Radius (px)', 220, { min: 40, max: 1000, step: 1 }),
+                            prop.number('nodeRadius', 'Node Radius (px)', 18, { min: 3, max: 100, step: 1 }),
+                            prop.number('ringWidth', 'Ring Width (px)', 2, { min: 0, max: 20, step: 1 }),
+                            prop.colorAlpha('ringColor', 'Ring Color', '#FFFFFF33'),
+                            prop.colorAlpha('backgroundColor', 'Background', '#0F172AFF'),
+                            prop.select('colorScheme', 'Color Scheme', 'spectrum', [
+                                { value: 'spectrum', label: 'Spectrum' },
+                                { value: 'ocean', label: 'Ocean' },
+                                { value: 'twilight', label: 'Twilight' },
+                                { value: 'manual', label: 'Manual' },
+                            ]),
+                            ...DEGREE_LABELS.map((label, semitones) =>
+                                prop.colorAlpha(`degreeColor${semitones}`, `${label} Color`, DEGREE_COLORS[semitones], {
+                                    visibleWhen: [{ key: 'colorScheme', equals: 'manual' }],
+                                })
+                            ),
+                            prop.boolean('showDegreeLabels', 'Show Degree Labels', true),
+                            prop.font('labelFontFamily', 'Label Font', 'Inter'),
+                            prop.number('labelSize', 'Label Size (px)', 16, { min: 6, max: 72, step: 1 }),
+                            prop.number('activeHaloWidth', 'Active Halo Width (px)', 8, { min: 1, max: 40, step: 1 }),
+                        ],
+                    },
+                ]),
+            ]
+        );
+    }
+
+    protected override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
+        const props = this.getSchemaProps();
+        if (!props.visible) return [];
+
+        const radius = props.radius as number;
+        const nodeRadius = props.nodeRadius as number;
+        const tonic = Number(props.tonicPitchClass ?? 0);
+        const activeAttacks = new Map<number, number>();
+        const visualExtent = radius + nodeRadius + (props.activeHaloWidth as number) + 28;
+
+        // This is the sole layout participant. Animated objects must never alter an
+        // element's measured bounds or cause it to shift while notes are played.
+        const layoutRect = new Rectangle(-visualExtent, -visualExtent, visualExtent * 2, visualExtent * 2, {
+            fillColor: '#00000000',
+        }).setLayoutParticipation('include');
+        const objects: RenderObject[] = [
+            layoutRect,
+            excludeFromLayout(
+                new Rectangle(-visualExtent, -visualExtent, visualExtent * 2, visualExtent * 2, {
+                    fillColor: props.backgroundColor as string,
+                })
+            ),
+            excludeFromLayout(new Arc(0, 0, radius, 0, Math.PI * 2, false, {
+                fillColor: '#00000000',
+                strokeColor: props.ringColor as string,
+                strokeWidth: props.ringWidth as number,
+            }))
+        ];
+
+        if (props.midiTrackId) {
+            const host = getRequiredPluginApi(this, [PLUGIN_CAPABILITIES.timelineRead]);
+            if (!host.ok) return host.renderFallback();
+
+            // A narrow window gives a reliable "currently sounding" state while still
+            // handling timestamps that land between render frames.
+            const epsilon = 1e-3;
+            host.api.timeline
+                .selectNotesInWindow({
+                    trackIds: [props.midiTrackId as string],
+                    startSec: targetTime - epsilon,
+                    endSec: targetTime + epsilon,
+                })
+                .forEach((note) => {
+                    if (note.startTime > targetTime || note.endTime <= targetTime) return;
+                    const notePitchClass = pitchClass(note.note);
+                    const progress = Math.min(1, Math.max(0, (targetTime - note.startTime) / ATTACK_DURATION_SECONDS));
+                    activeAttacks.set(notePitchClass, Math.max(activeAttacks.get(notePitchClass) ?? 0, progress));
+                });
+        }
+
+        const fontSelection = (props.labelFontFamily as string | undefined) ?? 'Inter';
+        const { family: fontFamily, weight: weightPart } = parseFontSelection(fontSelection);
+        const fontWeight = (weightPart || '400').toString();
+        if (fontFamily) ensureFontLoaded(fontFamily, fontWeight);
+        const labelFont = `${fontWeight} ${props.labelSize as number}px ${fontFamily || 'Inter'}, sans-serif`;
+        const colorScheme = props.colorScheme as string;
+        const colors =
+            colorScheme === 'manual'
+                ? DEGREE_COLORS.map((fallback, semitones) => (props[`degreeColor${semitones}`] as string | undefined) ?? fallback)
+                : COLOR_SCHEMES[colorScheme] ?? COLOR_SCHEMES.spectrum;
+
+        CIRCLE_OF_FIFTHS.forEach((semitonesFromTonic, index) => {
+            const angle = -Math.PI / 2 + (index * Math.PI * 2) / CIRCLE_OF_FIFTHS.length;
+            const x = Math.cos(angle) * radius;
+            const y = Math.sin(angle) * radius;
+            const color = colors[semitonesFromTonic];
+            const attackProgress = activeAttacks.get((tonic + semitonesFromTonic) % 12);
+            const isActive = attackProgress !== undefined;
+
+            if (isActive) {
+                const reveal = easings.easeOutCubic(attackProgress);
+                const halo = excludeFromLayout(new Arc(
+                    x,
+                    y,
+                    nodeRadius + 7 + (props.activeHaloWidth as number) * reveal,
+                    -Math.PI / 2,
+                    -Math.PI / 2 + Math.PI * 2 * reveal,
+                    false,
+                    {
+                        fillColor: '#00000000',
+                        strokeColor: color,
+                        strokeWidth: props.activeHaloWidth as number,
+                    }
+                ));
+                halo.setOpacity(0.55 + reveal * 0.45);
+                halo.setShadow(color, 18, 0, 0);
+                objects.push(halo);
+            }
+
+            const bounce = isActive ? Math.sin(attackProgress * Math.PI) * 0.22 : 0;
+            const node = excludeFromLayout(new Arc(x, y, nodeRadius * (1 + bounce), 0, Math.PI * 2, false, {
+                fillColor: color,
+                strokeColor: '#00000000',
+                strokeWidth: 0,
+            }));
+            if (isActive) node.setShadow(color, 12, 0, 0);
+            objects.push(node);
+
+            if (props.showDegreeLabels) {
+                objects.push(
+                    excludeFromLayout(new Text(x, y + 1, DEGREE_LABELS[semitonesFromTonic], labelFont, '#FFFFFFFF', 'center', 'middle'))
+                );
+            }
+        });
+
+        return objects;
+    }
+}
