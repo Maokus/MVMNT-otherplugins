@@ -1,6 +1,5 @@
 import {
     Arc,
-    easings,
     ensureFontLoaded,
     parseFontSelection,
     Rectangle,
@@ -14,6 +13,7 @@ import {
     type RenderObject,
 } from '@mvmnt/plugin-sdk';
 import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
+import * as af from '@mvmnt/plugin-sdk/animation';
 
 const PITCH_CLASSES = [
     { value: '0', label: 'C' },
@@ -48,7 +48,15 @@ const COLOR_SCHEMES: Record<string, string[]> = {
         '#277DA1', '#43AA8B', '#90BE6D', '#B5C95A', '#E9C46A', '#F4A261',
     ],
 };
-const ATTACK_DURATION_SECONDS = 0.24;
+const PRE_ONSET_DURATION_SECONDS = 0.12;
+const PRE_ONSET_NODE_SCALE = 0.86;
+
+type NoteAnimationState = {
+    phase: 'pre-onset' | 'active' | 'release';
+    haloReveal: number;
+    nodeScale: number;
+    priority: number;
+};
 
 function pitchClass(note: number): number {
     return ((note % 12) + 12) % 12;
@@ -56,6 +64,15 @@ function pitchClass(note: number): number {
 
 function excludeFromLayout<T extends RenderObject>(object: T): T {
     return object.setLayoutParticipation('exclude');
+}
+
+function progressForDuration(elapsed: number, duration: number): number {
+    if (duration <= 0) return elapsed >= 0 ? 1 : 0;
+    return Math.min(1, Math.max(0, elapsed / duration));
+}
+
+function onsetNodeScale(progress: number): number {
+    return PRE_ONSET_NODE_SCALE + (1 - PRE_ONSET_NODE_SCALE) * af.easings.easeOutBack(progress);
 }
 
 export class SonofieldCircleElement extends SceneElement {
@@ -96,6 +113,13 @@ export class SonofieldCircleElement extends SceneElement {
                             prop.number('radius', 'Radius (px)', 220, { min: 40, max: 1000, step: 1 }),
                             prop.number('nodeRadius', 'Node Radius (px)', 18, { min: 3, max: 100, step: 1 }),
                             prop.number('ringWidth', 'Ring Width (px)', 2, { min: 0, max: 20, step: 1 }),
+                        ],
+                    },
+                    {
+                        id: 'colors',
+                        label: 'Colors',
+                        collapsed: false,
+                        properties: [
                             prop.colorAlpha('ringColor', 'Ring Color', '#FFFFFF33'),
                             prop.colorAlpha('backgroundColor', 'Background', '#0F172AFF'),
                             prop.select('colorScheme', 'Color Scheme', 'spectrum', [
@@ -109,9 +133,37 @@ export class SonofieldCircleElement extends SceneElement {
                                     visibleWhen: [{ key: 'colorScheme', equals: 'manual' }],
                                 })
                             ),
+                        ],
+                    },
+                    {
+                        id: 'labels',
+                        label: 'Labels',
+                        collapsed: false,
+                        properties: [
                             prop.boolean('showDegreeLabels', 'Show Degree Labels', true),
                             prop.font('labelFontFamily', 'Label Font', 'Inter'),
                             prop.number('labelSize', 'Label Size (px)', 16, { min: 6, max: 72, step: 1 }),
+                        ],
+                    },
+                    {
+                        id: 'animation',
+                        label: 'Animation',
+                        collapsed: false,
+                        properties: [
+                            prop.select('animationType', 'Activation Animation', 'arc', [
+                                { value: 'arc', label: 'Arc' },
+                                { value: 'stroke', label: 'Stroke' },
+                            ]),
+                            prop.number('attackDuration', 'Note-on Duration (s)', 0.24, {
+                                min: 0,
+                                max: 5,
+                                step: 0.01,
+                            }),
+                            prop.number('releaseDuration', 'Note-off Duration (s)', 0.3, {
+                                min: 0,
+                                max: 5,
+                                step: 0.01,
+                            }),
                             prop.number('activeHaloWidth', 'Active Halo Width (px)', 8, { min: 1, max: 40, step: 1 }),
                         ],
                     },
@@ -127,7 +179,9 @@ export class SonofieldCircleElement extends SceneElement {
         const radius = props.radius as number;
         const nodeRadius = props.nodeRadius as number;
         const tonic = Number(props.tonicPitchClass ?? 0);
-        const activeAttacks = new Map<number, number>();
+        const attackDuration = props.attackDuration as number;
+        const releaseDuration = props.releaseDuration as number;
+        const noteStates = new Map<number, NoteAnimationState>();
         const visualExtent = radius + nodeRadius + (props.activeHaloWidth as number) + 28;
 
         // This is the sole layout participant. Animated objects must never alter an
@@ -142,7 +196,7 @@ export class SonofieldCircleElement extends SceneElement {
                     fillColor: props.backgroundColor as string,
                 })
             ),
-            excludeFromLayout(new Arc(0, 0, radius, 0, Math.PI * 2, false, {
+            excludeFromLayout(new Arc(0, 0, radius, {
                 fillColor: '#00000000',
                 strokeColor: props.ringColor as string,
                 strokeWidth: props.ringWidth as number,
@@ -153,20 +207,56 @@ export class SonofieldCircleElement extends SceneElement {
             const host = getRequiredPluginApi(this, [PLUGIN_CAPABILITIES.timelineRead]);
             if (!host.ok) return host.renderFallback();
 
-            // A narrow window gives a reliable "currently sounding" state while still
-            // handling timestamps that land between render frames.
-            const epsilon = 1e-3;
+            // Include imminent starts and recent endings so pre-onset and release
+            // animations render even when notes are shorter than either duration.
             host.api.timeline
                 .selectNotesInWindow({
                     trackIds: [props.midiTrackId as string],
-                    startSec: targetTime - epsilon,
-                    endSec: targetTime + epsilon,
+                    startSec: targetTime - releaseDuration,
+                    endSec: targetTime + PRE_ONSET_DURATION_SECONDS,
                 })
                 .forEach((note) => {
-                    if (note.startTime > targetTime || note.endTime <= targetTime) return;
+                    if (targetTime < note.startTime - PRE_ONSET_DURATION_SECONDS || targetTime > note.endTime + releaseDuration) {
+                        return;
+                    }
                     const notePitchClass = pitchClass(note.note);
-                    const progress = Math.min(1, Math.max(0, (targetTime - note.startTime) / ATTACK_DURATION_SECONDS));
-                    activeAttacks.set(notePitchClass, Math.max(activeAttacks.get(notePitchClass) ?? 0, progress));
+                    let state: NoteAnimationState;
+
+                    if (targetTime < note.startTime) {
+                        const preOnsetProgress = progressForDuration(
+                            targetTime - (note.startTime - PRE_ONSET_DURATION_SECONDS),
+                            PRE_ONSET_DURATION_SECONDS
+                        );
+                        state = {
+                            phase: 'pre-onset',
+                            haloReveal: 0,
+                            nodeScale: 1 - (1 - PRE_ONSET_NODE_SCALE) * af.easings.easeInCubic(preOnsetProgress),
+                            priority: 1,
+                        };
+                    } else if (targetTime < note.endTime) {
+                        const attackProgress = progressForDuration(targetTime - note.startTime, attackDuration);
+                        state = {
+                            phase: 'active',
+                            haloReveal: af.easings.easeOutCubic(attackProgress),
+                            nodeScale: onsetNodeScale(attackProgress),
+                            priority: 3,
+                        };
+                    } else {
+                        const attackAtNoteOff = progressForDuration(note.endTime - note.startTime, attackDuration);
+                        const releaseProgress = progressForDuration(targetTime - note.endTime, releaseDuration);
+                        const releaseEase = af.easings.easeOutCubic(releaseProgress);
+                        state = {
+                            phase: 'release',
+                            haloReveal: af.easings.easeOutCubic(attackAtNoteOff) * (1 - releaseEase),
+                            nodeScale: onsetNodeScale(attackAtNoteOff) * (1 - releaseEase) + releaseEase,
+                            priority: 2,
+                        };
+                    }
+
+                    const existing = noteStates.get(notePitchClass);
+                    if (!existing || state.priority > existing.priority || (state.priority === existing.priority && state.haloReveal > existing.haloReveal)) {
+                        noteStates.set(notePitchClass, state);
+                    }
                 });
         }
 
@@ -186,36 +276,28 @@ export class SonofieldCircleElement extends SceneElement {
             const x = Math.cos(angle) * radius;
             const y = Math.sin(angle) * radius;
             const color = colors[semitonesFromTonic];
-            const attackProgress = activeAttacks.get((tonic + semitonesFromTonic) % 12);
-            const isActive = attackProgress !== undefined;
+            const noteState = noteStates.get((tonic + semitonesFromTonic) % 12);
 
-            if (isActive) {
-                const reveal = easings.easeOutCubic(attackProgress);
-                const halo = excludeFromLayout(new Arc(
-                    x,
-                    y,
-                    nodeRadius + 7 + (props.activeHaloWidth as number) * reveal,
-                    -Math.PI / 2,
-                    -Math.PI / 2 + Math.PI * 2 * reveal,
-                    false,
-                    {
-                        fillColor: '#00000000',
-                        strokeColor: color,
-                        strokeWidth: props.activeHaloWidth as number,
-                    }
-                ));
+            if (noteState && noteState.haloReveal > 0) {
+                const reveal = noteState.haloReveal;
+                const haloWidth = props.activeHaloWidth as number;
+                const isStrokeAnimation = props.animationType === 'stroke';
+                const halo = excludeFromLayout(new Arc(x, y, nodeRadius + 7 + haloWidth, {
+                    startAngle: -Math.PI / 2,
+                    endAngle: isStrokeAnimation ? -Math.PI / 2 + Math.PI * 2 : -Math.PI / 2 + Math.PI * 2 * reveal,
+                    fillColor: '#00000000',
+                    strokeColor: color,
+                    strokeWidth: isStrokeAnimation ? haloWidth * reveal : haloWidth,
+                }));
                 halo.setOpacity(0.55 + reveal * 0.45);
                 halo.setShadow(color, 18, 0, 0);
                 objects.push(halo);
             }
 
-            const bounce = isActive ? Math.sin(attackProgress * Math.PI) * 0.22 : 0;
-            const node = excludeFromLayout(new Arc(x, y, nodeRadius * (1 + bounce), 0, Math.PI * 2, false, {
+            const node = excludeFromLayout(new Arc(x, y, nodeRadius * (noteState?.nodeScale ?? 1), {
                 fillColor: color,
-                strokeColor: '#00000000',
-                strokeWidth: 0,
             }));
-            if (isActive) node.setShadow(color, 12, 0, 0);
+            if (noteState?.phase === 'active') node.setShadow(color, 12, 0, 0);
             objects.push(node);
 
             if (props.showDegreeLabels) {
