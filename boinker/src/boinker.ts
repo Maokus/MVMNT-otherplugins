@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 import {
     CallbackElementRenderer,

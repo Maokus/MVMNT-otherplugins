@@ -8,17 +8,17 @@
     "elements": [
         {
             "type": "image-carousel",
-            "entry": "image-carousel.ts",
+            "entry": "src/image-carousel.ts",
             "capabilities": { "required": ["timeline.read"], "optional": [] }
         },
         {
             "type": "text-carousel",
-            "entry": "text-carousel.ts",
+            "entry": "src/text-carousel.ts",
             "capabilities": { "required": ["timeline.read"], "optional": [] }
         },
         {
             "type": "radar",
-            "entry": "radar.ts",
+            "entry": "src/radar.ts",
             "capabilities": { "required": ["timeline.read"], "optional": [] }
         }
     ]

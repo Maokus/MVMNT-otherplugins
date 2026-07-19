@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { defineRendererElement,
     CallbackElementRenderer,
     prop,
@@ -33,11 +32,10 @@ const transientCalculator: PluginAudioCalculator = {
     id: TRANSIENT_CALCULATOR_ID,
     version: 2,
     featureKey: TRANSIENT_FEATURE,
-    label: 'Transient Markers',
     async calculate(context) {
-        const { audioBuffer, analysisParams, frameCount, signal, reportProgress } = context;
-        const sampleRate = audioBuffer.sampleRate || analysisParams.sampleRate || 44100;
-        const hopSize = Math.max(1, analysisParams.hopSize);
+        const { audioBuffer, hopSeconds, frameCount, signal, reportProgress } = context;
+        const sampleRate = audioBuffer.sampleRate || 44100;
+        const hopSize = Math.max(1, Math.round(hopSeconds * sampleRate));
         const channels = Math.max(1, audioBuffer.numberOfChannels || 1);
         const channelData = Array.from({ length: channels }, (_, index) => audioBuffer.getChannelData(index));
         const rms = new Float32Array(frameCount);
@@ -302,15 +300,16 @@ class TransientDisplayElement extends CallbackElementRenderer {
         }
         const acceptedTransientTimes: number[] = [];
         for (const transientTime of transientTimes) {
-            const previous = acceptedTransientTimes.at(-1);
+            const previous = acceptedTransientTimes[acceptedTransientTimes.length - 1];
             if (previous === undefined || transientTime - previous >= getMinimumIntervalSeconds(previous, beatsPerBar, timing)) {
                 acceptedTransientTimes.push(transientTime);
             }
         }
-        const previousTransient = acceptedTransientTimes.filter((time) => time <= targetTime).at(-1);
+        const elapsedTransients = acceptedTransientTimes.filter((time) => time <= targetTime);
+        const previousTransient = elapsedTransients[elapsedTransients.length - 1];
         const priorTransient = previousTransient === undefined
             ? undefined
-            : acceptedTransientTimes.filter((time) => time < previousTransient).at(-1);
+            : acceptedTransientTimes.filter((time) => time < previousTransient).slice(-1)[0];
         const nextTransient = previousTransient === undefined
             ? undefined
             : transientTimes.find((time) => time > previousTransient);

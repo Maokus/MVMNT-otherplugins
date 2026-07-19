@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 import {
     Arc,
@@ -393,7 +392,7 @@ class SonofieldCircleElement extends CallbackElementRenderer {
                     })
                 );
                 halo.setOpacity(0.55 + reveal * 0.45);
-                halo.setShadow(color, 18, 0, 0);
+                halo.setFilter(`drop-shadow(0 0 18px ${color})`);
                 objects.push(halo);
             }
 
@@ -403,7 +402,7 @@ class SonofieldCircleElement extends CallbackElementRenderer {
                     strokeColor: '#00000000',
                 })
             );
-            if (noteState?.phase === 'active') node.setShadow(color, 12, 0, 0);
+            if (noteState?.phase === 'active') node.setFilter(`drop-shadow(0 0 12px ${color})`);
             objects.push(node);
 
             if (props.showDegreeLabels) {

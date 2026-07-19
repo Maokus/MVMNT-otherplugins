@@ -8,12 +8,12 @@
     "elements": [
         {
             "type": "ditherator",
-            "entry": "ditherator.ts",
+            "entry": "src/ditherator.ts",
             "capabilities": { "required": [], "optional": [] }
         },
         {
             "type": "amurulike-pianoroll",
-            "entry": "amurulike-pianoroll.ts",
+            "entry": "src/amurulike-pianoroll.ts",
             "capabilities": { "required": ["timeline.read"], "optional": [] }
         }
     ]

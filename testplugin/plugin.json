@@ -8,7 +8,7 @@
   "elements": [
     {
       "type": "my-first-element",
-      "entry": "my-first-element.ts",
+      "entry": "src/my-first-element.ts",
       "capabilities": { "required": [], "optional": [] }
     }
   ]

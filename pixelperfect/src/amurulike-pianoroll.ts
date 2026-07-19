@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 import {
     CallbackElementRenderer,
@@ -118,6 +117,9 @@ function intensityToPixels(
 
 class AmurulikePianorollElement extends CallbackElementRenderer {
     private _grid: PixelGrid | null = null;
+    private _gridCols = 0;
+    private _gridRows = 0;
+    private _gridCellSize = 0;
     private _matrix: IntensityMatrix | null = null;
 
     constructor(id: string = 'amurulike-pianoroll', config: Record<string, unknown> = {}) {
@@ -458,7 +460,7 @@ class AmurulikePianorollElement extends CallbackElementRenderer {
 
         // ── Create / update grid render object ────────────────────────────────
         const needNew =
-            !this._grid || this._grid.cols !== cols || this._grid.rows !== rows || this._grid.width !== cols * cellSize;
+            !this._grid || this._gridCols !== cols || this._gridRows !== rows || this._gridCellSize !== cellSize;
 
         const totalW = cols * cellSize;
         const totalH = rows * cellSize;
@@ -467,6 +469,9 @@ class AmurulikePianorollElement extends CallbackElementRenderer {
 
         if (needNew) {
             this._grid = new PixelGrid(ox, oy, cols, rows, cellSize, { pixels: pixelData });
+            this._gridCols = cols;
+            this._gridRows = rows;
+            this._gridCellSize = cellSize;
         } else {
             this._grid!.updatePixels(pixelData);
         }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 import {
     CallbackElementRenderer,
@@ -210,9 +209,8 @@ class TextCarouselElement extends CallbackElementRenderer {
         }
 
         const textObj = new Text(textX, 0, lines[lineIndex], fontString, {
-            color: textColor, align: textAlign, baseline: 'middle',
+            color: textColor, align: textAlign, baseline: 'middle', maxWidth: lw,
         });
-        textObj.setMaxWidth(lw);
         textObj.setLayoutParticipation('exclude');
 
         applyAnimation(textObj, animation, elapsed, timeToNext, animDuration, animAmount);

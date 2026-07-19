@@ -8,7 +8,7 @@
   "elements": [
     {
       "type": "eb-wub",
-      "entry": "eb-wub.ts",
+      "entry": "src/eb-wub.ts",
       "capabilities": { "required": ["audio.raw.read"], "optional": [] }
     }
   ]

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import type { RenderObject } from '@mvmnt-app/plugin-sdk';
 import * as af from '@mvmnt-app/plugin-sdk/animation';
 

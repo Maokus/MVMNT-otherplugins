@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 // Audio-reactive GIF frame controller. The selected frame is calculated solely
 // from the requested timeline time, so scrubbing and export are deterministic.

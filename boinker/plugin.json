@@ -8,7 +8,7 @@
   "elements": [
     {
       "type": "boinker",
-      "entry": "boinker.ts",
+      "entry": "src/boinker.ts",
       "capabilities": { "required": ["audio.features.read", "timing.conversion"], "optional": [] }
     }
   ]

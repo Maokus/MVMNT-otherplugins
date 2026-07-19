@@ -8,7 +8,7 @@
   "elements": [
     {
       "type": "sonofield-circle",
-      "entry": "sonofield-circle.ts",
+      "entry": "src/sonofield-circle.ts",
       "capabilities": { "required": ["timeline.read"], "optional": [] }
     }
   ]

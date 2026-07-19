@@ -8,7 +8,7 @@
   "elements": [
     {
       "type": "transient-display",
-      "entry": "transient-display.ts",
+      "entry": "src/transient-display.ts",
       "capabilities": { "required": ["audio.features.read", "audio.raw.read", "timing.conversion", "timeline.read", "audio.calculators.register"], "optional": [] }
     }
   ]

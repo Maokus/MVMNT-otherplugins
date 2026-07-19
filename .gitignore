@@ -2,3 +2,5 @@ patternspack1/
 midipack1/
 fnf/
 plugins_go_here.txt
+**/node_modules/
+**/.build/

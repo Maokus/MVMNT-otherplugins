@@ -1,7 +1,6 @@
-// @ts-nocheck
 import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 import { CallbackElementRenderer, prop, insertElementConfig, tab, type RenderObject } from '@mvmnt-app/plugin-sdk';
-import { BoxRenderObject, PixelGrid, type RenderConfig } from '@mvmnt-app/plugin-sdk/render';
+import { PixelGrid } from '@mvmnt-app/plugin-sdk/render';
 import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
 import { BAYER4, parseHexRGBA, PixelBuffer } from './pixel-buffer';
 
@@ -93,23 +92,14 @@ function randomDither(col: number, row: number): number {
  * Renders a cols×rows pixel buffer as nearest-neighbour scaled cells with optional
  * inter-cell gaps. Composes PixelGrid internally; reuses offscreen canvases across frames.
  *
- * Gap rendering uses an upscale-and-clear strategy:
- *   1. updatePixels on the internal PixelGrid (cols×rows offscreen).
- *   2. drawTo scales it into a full-size offscreen.
- *   3. clearRect strips for the gap borders of every row and column.
- *
- * When gap === 0, the full-size offscreen is skipped and the small canvas is
- * drawn directly into the scene canvas, scaled up.
+ * Each logical pixel is expanded into a cell-sized block. Gap rows and columns
+ * remain transparent, which keeps the implementation inside the public PixelGrid API.
  */
-class GappedPixelGrid extends BoxRenderObject {
-    readonly cols: number;
-    readonly rows: number;
-    readonly cellSize: number;
+class GappedPixelGrid extends PixelGrid {
+    readonly logicalCols: number;
+    readonly logicalRows: number;
+    readonly logicalCellSize: number;
     readonly gap: number;
-
-    private _small: PixelGrid;
-    private _fullOff: OffscreenCanvas | null;
-    private _fullCtx: OffscreenCanvasRenderingContext2D | null;
 
     constructor(
         x: number,
@@ -124,59 +114,41 @@ class GappedPixelGrid extends BoxRenderObject {
         const r = Math.max(1, Math.round(rows));
         const cs = Math.max(1, Math.round(cellSize));
         const g = Math.max(0, Math.round(gap));
-        super(x, y, c * cs, r * cs);
-        this.cols = c;
-        this.rows = r;
-        this.cellSize = cs;
+        super(x, y, c * cs, r * cs, 1);
+        this.logicalCols = c;
+        this.logicalRows = r;
+        this.logicalCellSize = cs;
         this.gap = g;
-
-        this._small = new PixelGrid(0, 0, c, r, 1);
-
-        if (g > 0) {
-            this._fullOff = new OffscreenCanvas(c * cs, r * cs);
-            this._fullCtx = this._fullOff.getContext('2d')!;
-            this._fullCtx.imageSmoothingEnabled = false;
-        } else {
-            this._fullOff = null;
-            this._fullCtx = null;
-        }
 
         this.updatePixels(pixels);
     }
 
     updatePixels(pixels: Uint8ClampedArray): void {
-        this._small.updatePixels(pixels);
-
-        if (this._fullCtx && this._fullOff) {
-            this._fullCtx.clearRect(0, 0, this.width, this.height);
-            this._small.drawTo(this._fullCtx, 0, 0, this.width, this.height);
-            this._clearGaps(this._fullCtx);
+        const expanded = new Uint8ClampedArray(
+            this.logicalCols * this.logicalCellSize * this.logicalRows * this.logicalCellSize * 4
+        );
+        const inset = Math.min(this.logicalCellSize, this.gap) / 2;
+        const start = Math.floor(inset);
+        const end = this.logicalCellSize - Math.ceil(inset);
+        for (let row = 0; row < this.logicalRows; row += 1) {
+            for (let col = 0; col < this.logicalCols; col += 1) {
+                const source = (row * this.logicalCols + col) * 4;
+                for (let y = start; y < end; y += 1) {
+                    for (let x = start; x < end; x += 1) {
+                        const target =
+                            ((row * this.logicalCellSize + y) * (this.logicalCols * this.logicalCellSize) +
+                                col * this.logicalCellSize +
+                                x) *
+                            4;
+                        expanded[target] = pixels[source];
+                        expanded[target + 1] = pixels[source + 1];
+                        expanded[target + 2] = pixels[source + 2];
+                        expanded[target + 3] = pixels[source + 3];
+                    }
+                }
+            }
         }
-    }
-
-    private _clearGaps(ctx: OffscreenCanvasRenderingContext2D): void {
-        const { cols, rows, cellSize, gap, width, height } = this;
-        const gapOff = gap >> 1;
-        const rightGap = gap - gapOff;
-        for (let i = 0; i < cols; i++) {
-            if (gapOff > 0) ctx.clearRect(i * cellSize, 0, gapOff, height);
-            if (rightGap > 0) ctx.clearRect((i + 1) * cellSize - rightGap, 0, rightGap, height);
-        }
-        for (let j = 0; j < rows; j++) {
-            if (gapOff > 0) ctx.clearRect(0, j * cellSize, width, gapOff);
-            if (rightGap > 0) ctx.clearRect(0, (j + 1) * cellSize - rightGap, width, rightGap);
-        }
-    }
-
-    protected _renderSelf(ctx: CanvasRenderingContext2D, _config: RenderConfig, _currentTime: number): void {
-        if (this._fullOff) {
-            const prev = ctx.imageSmoothingEnabled;
-            ctx.imageSmoothingEnabled = false;
-            ctx.drawImage(this._fullOff, 0, 0);
-            ctx.imageSmoothingEnabled = prev;
-        } else {
-            this._small.drawTo(ctx, 0, 0, this.width, this.height);
-        }
+        super.updatePixels(expanded);
     }
 }
 
@@ -396,9 +368,9 @@ class DitheratorElement extends CallbackElementRenderer {
 
         const needNewPrimary =
             !this._primaryGrid ||
-            this._primaryGrid.cols !== cols ||
-            this._primaryGrid.rows !== rows ||
-            this._primaryGrid.cellSize !== cellSize ||
+            this._primaryGrid.logicalCols !== cols ||
+            this._primaryGrid.logicalRows !== rows ||
+            this._primaryGrid.logicalCellSize !== cellSize ||
             this._primaryGrid.gap !== cellGap;
 
         if (needNewPrimary) {
@@ -413,9 +385,9 @@ class DitheratorElement extends CallbackElementRenderer {
         if (secondaryBuf) {
             const needNewSecondary =
                 !this._secondaryGrid ||
-                this._secondaryGrid.cols !== cols ||
-                this._secondaryGrid.rows !== rows ||
-                this._secondaryGrid.cellSize !== cellSize ||
+                this._secondaryGrid.logicalCols !== cols ||
+                this._secondaryGrid.logicalRows !== rows ||
+                this._secondaryGrid.logicalCellSize !== cellSize ||
                 this._secondaryGrid.gap !== secondaryCellGap;
 
             if (needNewSecondary) {

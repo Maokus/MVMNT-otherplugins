@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 // Radar — a sweeping playhead rotates around the centre. When it crosses a note's
 // phase position a marker appears at the corresponding pitch radius and fades out.
