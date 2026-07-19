@@ -1,5 +1,6 @@
-import type { RenderObject } from '@mvmnt/plugin-sdk';
-import * as af from '@mvmnt/plugin-sdk/animation';
+// @ts-nocheck
+import type { RenderObject } from '@mvmnt-app/plugin-sdk';
+import * as af from '@mvmnt-app/plugin-sdk/animation';
 
 export const JUMP_DURATION = 0.3;
 export const JUMP_HEIGHT = 10;

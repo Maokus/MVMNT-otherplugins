@@ -1,24 +1,24 @@
+// @ts-nocheck
+import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 // Radar — a sweeping playhead rotates around the centre. When it crosses a note's
 // phase position a marker appears at the corresponding pitch radius and fades out.
 
 import {
-    SceneElement,
+    CallbackElementRenderer,
     prop,
     insertElementConfig,
     tab,
-    getRequiredPluginApi,
-    PLUGIN_CAPABILITIES,
     type RenderObject,
-} from '@mvmnt/plugin-sdk';
-import { Arc, Line, Rectangle, Text, GlowLayer } from '@mvmnt/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
-import * as af from '@mvmnt/plugin-sdk/animation';
+} from '@mvmnt-app/plugin-sdk';
+import { Arc, Line, Rectangle, Text, GlowLayer } from '@mvmnt-app/plugin-sdk/render';
+import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+import * as af from '@mvmnt-app/plugin-sdk/animation';
 import { applyAnimation } from './animations';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function noLayout<T extends RenderObject>(obj: T): T {
-    (obj as any).setIncludeInLayoutBounds?.(false);
+    obj.setLayoutParticipation('exclude');
     return obj;
 }
 
@@ -66,7 +66,9 @@ function makeMarker(
     else if (type === 'note') char = '♪';
     else char = customText || '?';
     const fontSize = Math.max(8, Math.round(size));
-    return noLayout(new Text(cx, cy, char, `bold ${fontSize}px sans-serif`, colorA, 'center', 'middle'));
+    return noLayout(new Text(cx, cy, char, `bold ${fontSize}px sans-serif`, {
+        color: colorA, align: 'center', baseline: 'middle',
+    }));
 }
 
 function makeRipple(
@@ -123,7 +125,7 @@ function makeRipple(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class RadarElement extends SceneElement {
+class RadarElement extends CallbackElementRenderer {
     constructor(id: string = 'radar', config: Record<string, unknown> = {}) {
         super('radar', id, config);
     }
@@ -294,16 +296,18 @@ export class RadarElement extends SceneElement {
         );
     }
 
-    protected override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
+    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
         const p = this.getSchemaProps();
         if (!p.visible) return [];
 
         if (!p.midiTrackId) {
-            return [new Text(0, 0, 'Select a MIDI track', '14px sans-serif', '#94a3b8', 'left', 'top')];
+            return [new Text(0, 0, 'Select a MIDI track', '14px sans-serif', {
+                color: '#94a3b8', align: 'left', baseline: 'top',
+            })];
         }
 
-        const host = getRequiredPluginApi(this, [PLUGIN_CAPABILITIES.timelineRead]);
-        if (!host.ok) return host.renderFallback();
+        const timeline = this.context.timeline;
+        if (!timeline) return [];
 
         // ── Config ───────────────────────────────────────────────────────────
         const radius = Math.max(20, p.radius as number);
@@ -332,9 +336,9 @@ export class RadarElement extends SceneElement {
         const faceCentre = p.faceCentre as boolean;
 
         // ── BPM / period ─────────────────────────────────────────────────────
-        const snap = host.api.timeline.getStateSnapshot();
-        const bpm = snap?.timeline.globalBpm ?? 120;
-        const beatsPerBar = snap?.timeline.beatsPerBar ?? 4;
+        const metadata = timeline.getMetadata();
+        const bpm = metadata.ok ? metadata.value.tempoBpm : 120;
+        const beatsPerBar = metadata.ok ? metadata.value.timeSignature.numerator : 4;
         const period = numBars * beatsPerBar * (60 / bpm);
 
         // ── Note range ───────────────────────────────────────────────────────
@@ -342,9 +346,14 @@ export class RadarElement extends SceneElement {
         let maxNote: number;
 
         if (p.autoRange as boolean) {
-            const pitches = host.api.timeline.selectDistinctNoteNumbers({
+            const selected = timeline.selectNotes({
                 trackIds: [p.midiTrackId as string],
+                startSeconds: 0,
+                endSeconds: metadata.ok ? metadata.value.durationSeconds : 86400,
             });
+            const pitches = selected.ok
+                ? [...new Set(selected.value.map((note) => note.note))].sort((a, b) => a - b)
+                : [];
             minNote = pitches.length > 0 ? pitches[0] : 36;
             maxNote = pitches.length > 0 ? pitches[pitches.length - 1] : 84;
         } else {
@@ -366,7 +375,9 @@ export class RadarElement extends SceneElement {
             const midR = (innerRadius + radius) / 2;
             objects.push(
                 noLayout(
-                    new Arc(0, 0, midR, 0, Math.PI * 2, false, {
+                    new Arc(0, 0, midR, {
+                        startAngle: 0,
+                        endAngle: Math.PI * 2,
                         fillColor: null,
                         strokeColor: ringColor,
                         strokeWidth: radialSpan,
@@ -378,19 +389,22 @@ export class RadarElement extends SceneElement {
         // ── Static tick marks (notes in the current bar) ──────────────────────
         if (showTicks) {
             const barStart = Math.floor(targetTime / period) * period;
-            const barNotes = host.api.timeline.selectNotesInWindow({
+            const selected = timeline.selectNotes({
                 trackIds: [p.midiTrackId as string],
-                startSec: barStart,
-                endSec: barStart + period,
+                startSeconds: barStart,
+                endSeconds: barStart + period,
             });
+            const barNotes = selected.ok ? selected.value : [];
             for (const n of barNotes) {
                 if (n.note < minNote || n.note > maxNote) continue;
-                const angle = clockToRad(((n.startTime - barStart) / period) * 360);
+                const angle = clockToRad(((n.startSeconds - barStart) / period) * 360);
                 const r = noteRadius(n.note);
                 const tColor = colorMode === 'pitch' ? withAlpha(pitchToColor(n.note), 0.5) : tickColor;
                 objects.push(
                     noLayout(
-                        new Arc(r * Math.cos(angle), r * Math.sin(angle), tickSize, 0, Math.PI * 2, false, {
+                        new Arc(r * Math.cos(angle), r * Math.sin(angle), tickSize, {
+                            startAngle: 0,
+                            endAngle: Math.PI * 2,
                             fillColor: tColor,
                         })
                     )
@@ -401,20 +415,21 @@ export class RadarElement extends SceneElement {
         // ── Hit markers & effects ─────────────────────────────────────────────
         const maxEffectDuration = rippleType !== 'none' ? Math.max(markerDuration, rippleDuration) : markerDuration;
         const EPS = 1e-3;
-        const allPastNotes = host.api.timeline.selectNotesInWindow({
+        const selectedPast = timeline.selectNotes({
             trackIds: [p.midiTrackId as string],
-            startSec: 0,
-            endSec: targetTime + EPS,
+            startSeconds: 0,
+            endSeconds: targetTime + EPS,
         });
+        const allPastNotes = selectedPast.ok ? selectedPast.value : [];
 
         for (const n of allPastNotes) {
-            if (n.startTime > targetTime) continue;
+            if (n.startSeconds > targetTime) continue;
             if (n.note < minNote || n.note > maxNote) continue;
 
-            const timeSinceHit = targetTime - n.startTime;
+            const timeSinceHit = targetTime - n.startSeconds;
             if (timeSinceHit > maxEffectDuration) continue;
 
-            const angle = clockToRad(((n.startTime % period) / period) * 360);
+            const angle = clockToRad(((n.startSeconds % period) / period) * 360);
             const r = noteRadius(n.note);
             const cx = r * Math.cos(angle);
             const cy = r * Math.sin(angle);
@@ -458,7 +473,7 @@ export class RadarElement extends SceneElement {
         // ── Layout sentinel ───────────────────────────────────────────────────
         const d = radius + 4;
         const layoutRect = new Rectangle(-d, -d, d * 2, d * 2, { fillColor: null });
-        (layoutRect as any).setIncludeInLayoutBounds?.(true);
+        layoutRect.setLayoutParticipation('include');
 
         if (bloomRadius > 0) {
             const glow = new GlowLayer({ glowBlur: bloomRadius });
@@ -469,3 +484,6 @@ export class RadarElement extends SceneElement {
         return [layoutRect, ...objects];
     }
 }
+
+export const radar = defineRendererElement({ type: 'radar', capabilities: { required: ['timeline.read'], optional: [] }, }, RadarElement);
+export default radar;

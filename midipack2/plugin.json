@@ -2,21 +2,24 @@
     "id": "us.maok.midipack2",
     "name": "Midi Pack 2",
     "version": "1.0.0",
-    "apiVersion": "^1.1.0",
+    "apiVersion": "^2.0.0",
     "description": "Custom plugin",
     "author": "Your Name",
     "elements": [
         {
             "type": "image-carousel",
-            "entry": "image-carousel.ts"
+            "entry": "image-carousel.ts",
+            "capabilities": { "required": ["timeline.read"], "optional": [] }
         },
         {
             "type": "text-carousel",
-            "entry": "text-carousel.ts"
+            "entry": "text-carousel.ts",
+            "capabilities": { "required": ["timeline.read"], "optional": [] }
         },
         {
             "type": "radar",
-            "entry": "radar.ts"
+            "entry": "radar.ts",
+            "capabilities": { "required": ["timeline.read"], "optional": [] }
         }
     ]
 }

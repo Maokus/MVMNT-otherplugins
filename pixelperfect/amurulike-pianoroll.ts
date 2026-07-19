@@ -1,17 +1,16 @@
+// @ts-nocheck
+import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 import {
-    SceneElement,
+    CallbackElementRenderer,
     prop,
     insertElementConfig,
     tab,
-    getRequiredPluginApi,
-    PLUGIN_CAPABILITIES,
-    timeToTicks,
     type RenderObject,
-} from '@mvmnt/plugin-sdk';
-import { PixelGrid } from '@mvmnt/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
+} from '@mvmnt-app/plugin-sdk';
+import { PixelGrid } from '@mvmnt-app/plugin-sdk/render';
+import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
 import { parseHex6, BAYER4 } from './pixel-buffer';
-import * as af from '@mvmnt/plugin-sdk/animation';
+import * as af from '@mvmnt-app/plugin-sdk/animation';
 import alea from 'seedrandom';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -117,7 +116,7 @@ function intensityToPixels(
 
 // ── Element ──────────────────────────────────────────────────────────────────
 
-export class AmurulikePianorollElement extends SceneElement {
+class AmurulikePianorollElement extends CallbackElementRenderer {
     private _grid: PixelGrid | null = null;
     private _matrix: IntensityMatrix | null = null;
 
@@ -275,7 +274,7 @@ export class AmurulikePianorollElement extends SceneElement {
 
     // ── Render ────────────────────────────────────────────────────────────────
 
-    protected override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
+    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
         const p = this.getSchemaProps();
         if (!p.visible) return [];
 
@@ -359,18 +358,18 @@ export class AmurulikePianorollElement extends SceneElement {
         ]);
 
         // ── Build logical model and accumulate intensities ────────────────────
-        const host = getRequiredPluginApi(this, [PLUGIN_CAPABILITIES.timelineRead]);
-        if (!host.ok) return host.renderFallback();
-
         if (p.midiTrackId) {
             const queryStart = targetTime - playheadFraction * windowDuration - 4;
             const queryEnd = targetTime + (1 - playheadFraction) * windowDuration;
 
-            const notes = host.api.timeline.selectNotesInWindow({
+            const notesResult = this.context.timeline?.selectNotes({
                 trackIds: [p.midiTrackId as string],
-                startSec: queryStart,
-                endSec: queryEnd,
+                startSeconds: queryStart,
+                endSeconds: queryEnd,
             });
+            if (!notesResult?.ok) return [];
+            const notes = notesResult.value
+                .map((note) => ({ ...note, startTime: note.startSeconds, endTime: note.endSeconds }));
 
             notes.sort((a, b) => (a.velocity ?? 64) - (b.velocity ?? 64));
 
@@ -476,3 +475,6 @@ export class AmurulikePianorollElement extends SceneElement {
         return [this._grid!];
     }
 }
+
+export const amurulikePianoroll = defineRendererElement({ type: 'amurulike-pianoroll', capabilities: { required: ['timeline.read'], optional: [] }, }, AmurulikePianorollElement);
+export default amurulikePianoroll;

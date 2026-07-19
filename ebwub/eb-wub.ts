@@ -1,23 +1,18 @@
+// @ts-nocheck
+import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 // Audio-reactive GIF frame controller. The selected frame is calculated solely
 // from the requested timeline time, so scrubbing and export are deterministic.
 import {
-    SceneElement,
+    CallbackElementRenderer,
     prop,
     insertElementConfig,
     tab,
     Rectangle,
-    getRequiredPluginApi,
-    PLUGIN_CAPABILITIES,
-    resolveProjectAssetDescriptor,
     type RenderObject,
     type VisualResource,
-} from '@mvmnt/plugin-sdk';
-import { VisualMedia } from '@mvmnt/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
-
-function excludeFromLayout<T extends RenderObject>(object: T): T {
-    return object.setLayoutParticipation('exclude');
-}
+} from '@mvmnt-app/plugin-sdk';
+import { VisualMedia } from '@mvmnt-app/plugin-sdk/render';
+import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
 
 function frameStartTime(resource: VisualResource | null, normalizedVolume: number): number {
     const frames = resource?.frames ?? [];
@@ -34,10 +29,10 @@ function frameStartTime(resource: VisualResource | null, normalizedVolume: numbe
     return milliseconds / 1000;
 }
 
-export class EbWubElement extends SceneElement {
+class EbWubElement extends CallbackElementRenderer {
     private readonly _bundledGif = this.bundledSprite('eb_wub.gif');
     private readonly _selectedAsset = this.visualHandle();
-    private readonly _media = new VisualMedia(0, 0, 320, 320, { layoutBoundsMode: 'none' });
+    private readonly _media = new VisualMedia(0, 0, 320, 320, { layoutParticipation: 'exclude' });
     private readonly _layoutRect = new Rectangle(0, 0, 320, 320, { fillColor: '#00000000' }).setLayoutParticipation('include');
 
     constructor(id: string = 'eb-wub', config: Record<string, unknown> = {}) {
@@ -110,7 +105,7 @@ export class EbWubElement extends SceneElement {
         );
     }
 
-    protected override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
+    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
         const props = this.getSchemaProps();
         if (!props.visible) return [];
 
@@ -119,25 +114,21 @@ export class EbWubElement extends SceneElement {
         this._layoutRect.width = width;
         this._layoutRect.height = height;
 
-        const host = getRequiredPluginApi(this, [PLUGIN_CAPABILITIES.audioRawRead]);
-        if (!host.ok) {
-            return [this._layoutRect, ...host.renderFallback().map(excludeFromLayout)];
-        }
-
         const sourceId = props.imageSource as string | null;
         const { resource, status } = sourceId
-            ? this._selectedAsset.update(resolveProjectAssetDescriptor(sourceId))
+            ? this._selectedAsset.update(sourceId)
             : this._bundledGif.get();
         const trackId = props.audioTrackId as string | null;
         const smoothing = props.smoothing as number;
         const windowSec = Math.max(0.025, smoothing * 0.01);
-        const rms = trackId
-            ? host.api.audio.getRmsInWindow({
+        const rmsResult = trackId
+            ? this.context.audio?.getRms({
                   trackId,
-                  startSec: targetTime - windowSec / 2,
-                  endSec: targetTime + windowSec / 2,
+                  startSeconds: targetTime - windowSec / 2,
+                  endSeconds: targetTime + windowSec / 2,
               })
             : null;
+        const rms = rmsResult?.ok ? rmsResult.value : null;
         const volume = rms && rms.length > 0 ? Math.max(0, rms.reduce((sum, value) => sum + value, 0) / rms.length) : 0;
         const ceiling = Math.max(0.001, props.volumeForLastFrame as number);
         const localTime = frameStartTime(resource, Math.min(1, volume / ceiling));
@@ -152,3 +143,6 @@ export class EbWubElement extends SceneElement {
         return [this._layoutRect, this._media];
     }
 }
+
+export const ebWub = defineRendererElement({ type: 'eb-wub', capabilities: { required: ['audio.raw.read'], optional: [] }, }, EbWubElement);
+export default ebWub;

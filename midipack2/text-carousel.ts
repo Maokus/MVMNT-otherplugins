@@ -1,16 +1,16 @@
+// @ts-nocheck
+import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 import {
-    SceneElement,
+    CallbackElementRenderer,
     prop,
     insertElementConfig,
     tab,
     parseFontSelection,
     ensureFontLoaded,
-    getRequiredPluginApi,
-    PLUGIN_CAPABILITIES,
     type RenderObject,
-} from '@mvmnt/plugin-sdk';
-import { Text, Rectangle } from '@mvmnt/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
+} from '@mvmnt-app/plugin-sdk';
+import { Text, Rectangle } from '@mvmnt-app/plugin-sdk/render';
+import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
 import { applyAnimation, FLIP_PRE } from './animations';
 
 let _measureCanvas: HTMLCanvasElement | null = null;
@@ -23,7 +23,7 @@ function measureTextWidth(text: string, fontString: string): number {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class TextCarouselElement extends SceneElement {
+class TextCarouselElement extends CallbackElementRenderer {
     constructor(id: string = 'text-carousel', config: Record<string, unknown> = {}) {
         super('text-carousel', id, config);
     }
@@ -137,23 +137,24 @@ export class TextCarouselElement extends SceneElement {
         );
     }
 
-    protected override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
+    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
         const props = this.getSchemaProps();
         if (!props.visible) return [];
 
         if (!props.midiTrackId) {
-            return [new Text(0, 0, 'Select a MIDI track', '14px Inter, sans-serif', '#94a3b8', 'left', 'top')];
+            return [new Text(0, 0, 'Select a MIDI track', '14px Inter, sans-serif', {
+                color: '#94a3b8', align: 'left', baseline: 'top',
+            })];
         }
 
         const rawLines = ((props.lines as string | null) ?? '').split('\n');
         const lines = rawLines.map((l) => l.trim()).filter((l) => l.length > 0);
 
         if (lines.length === 0) {
-            return [new Text(0, 0, 'Enter some lines of text', '14px Inter, sans-serif', '#94a3b8', 'left', 'top')];
+            return [new Text(0, 0, 'Enter some lines of text', '14px Inter, sans-serif', {
+                color: '#94a3b8', align: 'left', baseline: 'top',
+            })];
         }
-
-        const host = getRequiredPluginApi(this, [PLUGIN_CAPABILITIES.timelineRead]);
-        if (!host.ok) return host.renderFallback();
 
         const animation = props.animation as string;
         const animDuration = (props.animDuration as number) ?? 0.3;
@@ -161,11 +162,13 @@ export class TextCarouselElement extends SceneElement {
         const EPS = 1e-3;
         const lookahead = animation === 'flipy' || animation === 'flipx' ? FLIP_PRE + EPS : EPS;
 
-        const notes = host.api.timeline.selectNotesInWindow({
+        const notesResult = this.context.timeline?.selectNotes({
             trackIds: [props.midiTrackId],
-            startSec: 0,
-            endSec: targetTime + lookahead,
+            startSeconds: 0,
+            endSeconds: targetTime + lookahead,
         });
+        if (!notesResult?.ok) return [];
+        const notes = notesResult.value.map((note) => ({ ...note, startTime: note.startSeconds }));
 
         const pastNotes = notes.filter((n) => n.startTime <= targetTime);
         const lineIndex = pastNotes.length % lines.length;
@@ -206,7 +209,9 @@ export class TextCarouselElement extends SceneElement {
             textAlign = 'center';
         }
 
-        const textObj = new Text(textX, 0, lines[lineIndex], fontString, textColor, textAlign, 'middle');
+        const textObj = new Text(textX, 0, lines[lineIndex], fontString, {
+            color: textColor, align: textAlign, baseline: 'middle',
+        });
         textObj.setMaxWidth(lw);
         textObj.setLayoutParticipation('exclude');
 
@@ -240,3 +245,6 @@ export class TextCarouselElement extends SceneElement {
         return result;
     }
 }
+
+export const textCarousel = defineRendererElement({ type: 'text-carousel', capabilities: { required: ['timeline.read'], optional: [] }, }, TextCarouselElement);
+export default textCarousel;

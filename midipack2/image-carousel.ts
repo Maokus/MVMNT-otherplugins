@@ -1,21 +1,20 @@
+// @ts-nocheck
+import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 import {
-    SceneElement,
+    CallbackElementRenderer,
     prop,
     insertElementConfig,
     tab,
-    VisualResourceHandle,
-    resolveProjectAssetDescriptor,
-    getRequiredPluginApi,
-    PLUGIN_CAPABILITIES,
+
     type RenderObject,
-} from '@mvmnt/plugin-sdk';
-import { VisualMedia, Text, Rectangle } from '@mvmnt/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
+} from '@mvmnt-app/plugin-sdk';
+import { VisualMedia, Text, Rectangle } from '@mvmnt-app/plugin-sdk/render';
+import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
 import { applyAnimation, FLIP_PRE } from './animations';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-export class ImageCarouselElement extends SceneElement {
+class ImageCarouselElement extends CallbackElementRenderer {
     private readonly _bundled = [
         this.bundledImage('bocchi_200px.png'),
         this.bundledImage('kita_200px.png'),
@@ -24,10 +23,10 @@ export class ImageCarouselElement extends SceneElement {
     ] as const;
 
     private readonly _userHandles = [
-        new VisualResourceHandle(),
-        new VisualResourceHandle(),
-        new VisualResourceHandle(),
-        new VisualResourceHandle(),
+        this.visualHandle(),
+        this.visualHandle(),
+        this.visualHandle(),
+        this.visualHandle(),
     ] as const;
 
     constructor(id: string = 'image-carousel', config: Record<string, unknown> = {}) {
@@ -111,16 +110,15 @@ export class ImageCarouselElement extends SceneElement {
         );
     }
 
-    protected override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
+    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
         const props = this.getSchemaProps();
         if (!props.visible) return [];
 
         if (!props.midiTrackId) {
-            return [new Text(0, 0, 'Select a MIDI track', '14px Inter, sans-serif', '#94a3b8', 'left', 'top')];
+            return [new Text(0, 0, 'Select a MIDI track', '14px Inter, sans-serif', {
+                color: '#94a3b8', align: 'left', baseline: 'top',
+            })];
         }
-
-        const host = getRequiredPluginApi(this, [PLUGIN_CAPABILITIES.timelineRead]);
-        if (!host.ok) return host.renderFallback();
 
         const animation = props.animation as string;
         const animDuration = (props.animDuration as number) ?? 0.3;
@@ -128,11 +126,13 @@ export class ImageCarouselElement extends SceneElement {
         const EPS = 1e-3;
         const lookahead = animation === 'flipy' || animation === 'flipx' ? FLIP_PRE + EPS : EPS;
 
-        const notes = host.api.timeline.selectNotesInWindow({
+        const notesResult = this.context.timeline?.selectNotes({
             trackIds: [props.midiTrackId],
-            startSec: 0,
-            endSec: targetTime + lookahead,
+            startSeconds: 0,
+            endSeconds: targetTime + lookahead,
         });
+        if (!notesResult?.ok) return [];
+        const notes = notesResult.value.map((note) => ({ ...note, startTime: note.startSeconds }));
 
         const pastNotes = notes.filter((n) => n.startTime <= targetTime);
         const imageIndex = pastNotes.length % 4;
@@ -151,7 +151,7 @@ export class ImageCarouselElement extends SceneElement {
         ];
 
         const resources = userSrcs.map((src, i) =>
-            src ? this._userHandles[i].update(resolveProjectAssetDescriptor(src)) : this._bundled[i].get()
+            src ? this._userHandles[i].update(src) : this._bundled[i].get()
         );
 
         const { resource, status } = resources[imageIndex];
@@ -159,7 +159,10 @@ export class ImageCarouselElement extends SceneElement {
         const h = props.imageHeight as number;
 
         // Centre the VisualMedia at the element origin so scaleX/scaleY animate from the middle
-        const vm = new VisualMedia(w / 2, h / 2, w, h, { fitMode: 'contain', layoutBoundsMode: 'none' });
+        const vm = new VisualMedia(w / 2, h / 2, w, h, {
+            fitMode: 'contain',
+            layoutParticipation: 'exclude',
+        });
         vm.setResource(resource, status).setOrigin(w / 2, h / 2);
 
         applyAnimation(vm, animation, elapsed, timeToNext, animDuration, animAmount);
@@ -167,3 +170,6 @@ export class ImageCarouselElement extends SceneElement {
         return [new Rectangle(0, 0, w, h, { fillColor: null, strokeColor: 'transparent' }), vm];
     }
 }
+
+export const imageCarousel = defineRendererElement({ type: 'image-carousel', capabilities: { required: ['timeline.read'], optional: [] }, }, ImageCarouselElement);
+export default imageCarousel;

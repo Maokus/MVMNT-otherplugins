@@ -2,17 +2,19 @@
     "id": "us.maok.pixelperfect",
     "name": "Pixel Perfect",
     "version": "1.0.2",
-    "apiVersion": "^1.1.0",
+    "apiVersion": "^2.0.0",
     "description": "Plugin of elements based around pixel art!",
     "author": "Your Name",
     "elements": [
         {
             "type": "ditherator",
-            "entry": "ditherator.ts"
+            "entry": "ditherator.ts",
+            "capabilities": { "required": [], "optional": [] }
         },
         {
             "type": "amurulike-pianoroll",
-            "entry": "amurulike-pianoroll.ts"
+            "entry": "amurulike-pianoroll.ts",
+            "capabilities": { "required": ["timeline.read"], "optional": [] }
         }
     ]
 }

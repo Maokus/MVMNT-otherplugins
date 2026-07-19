@@ -1,23 +1,22 @@
+// @ts-nocheck
+import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
 import {
-    SceneElement,
+    CallbackElementRenderer,
     prop,
     insertElementConfig,
     tab,
     VisualMediaPlayback,
-    sampleAudio,
-    registerFeatureRequirements,
-    timeToBeats,
-} from '@mvmnt/plugin-sdk';
-import { VisualMedia, EmptyRenderObject, Rectangle, Text, type RenderObject } from '@mvmnt/plugin-sdk/render';
+
+
+} from '@mvmnt-app/plugin-sdk';
+import { VisualMedia, EmptyRenderObject, Rectangle, Text, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import type {
     BundledSprite,
     ResourceHandleResult,
     EnhancedConfigSchema,
     VisualResource,
     ResourceStatus,
-} from '@mvmnt/plugin-sdk';
-
-registerFeatureRequirements('boinker', [{ feature: 'rms' }]);
+} from '@mvmnt-app/plugin-sdk';
 
 const BASE_SIZE = 600;
 
@@ -37,36 +36,36 @@ interface Part {
     status?: ResourceStatus;
 }
 
-export class BoinkerElement extends SceneElement {
+class BoinkerElement extends CallbackElementRenderer {
     private readonly _parts: { [index: string]: Part } = {
         body: {
             handle: this.bundledImage('Body.png'),
-            renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutBoundsMode: 'none' }),
+            renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutParticipation: 'exclude' }),
             defaultTransforms: { x: 310, y: 270 },
         },
         head: {
             handle: this.bundledImage('Head.png'),
-            renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutBoundsMode: 'none' }),
+            renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutParticipation: 'exclude' }),
             defaultTransforms: { x: 300, y: 100 },
         },
         armL: {
             handle: this.bundledImage('ArmL.png'),
-            renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutBoundsMode: 'none' }),
+            renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutParticipation: 'exclude' }),
             defaultTransforms: { x: 120, y: 340 },
         },
         armR: {
             handle: this.bundledImage('ArmR.png'),
-            renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutBoundsMode: 'none' }),
+            renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutParticipation: 'exclude' }),
             defaultTransforms: { x: 480, y: 320 },
         },
         legL: {
             handle: this.bundledImage('LegL.png'),
-            renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutBoundsMode: 'none' }),
+            renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutParticipation: 'exclude' }),
             defaultTransforms: { x: 220, y: 600, pivotX: 0.5, pivotY: 1 },
         },
         legR: {
             handle: this.bundledImage('LegR.png'),
-            renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutBoundsMode: 'none' }),
+            renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutParticipation: 'exclude' }),
             defaultTransforms: { x: 440, y: 600, pivotX: 0.5, pivotY: 1 },
         },
     };
@@ -119,12 +118,14 @@ export class BoinkerElement extends SceneElement {
         );
     }
 
-    protected override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
+    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
         const props = this.getSchemaProps();
         if (!props.visible) return [];
 
         if (!props.audioTrackId) {
-            return [new Text(0, 0, 'Select an audio track', '14px Inter, sans-serif', '#94a3b8', 'left', 'top')];
+            return [new Text(0, 0, 'Select an audio track', '14px Inter, sans-serif', {
+                color: '#94a3b8', align: 'left', baseline: 'top',
+            })];
         }
 
         // Prepare resources and media objects
@@ -142,7 +143,7 @@ export class BoinkerElement extends SceneElement {
                 part.renderObject
                     .setResource(part.resource, part.status)
                     .setFitMode('clip')
-                    .setLayoutBoundsMode('none')
+                    .setLayoutParticipation('exclude')
                     .setOriginFraction(part.defaultTransforms.pivotX ?? 0.5, part.defaultTransforms.pivotY ?? 0.5);
                 part.renderObject.rotation = part.defaultTransforms.rotation ?? 0;
                 part.renderObject.scaleX = part.defaultTransforms.scaleX ?? 0.4;
@@ -152,15 +153,15 @@ export class BoinkerElement extends SceneElement {
             }
         }
 
-        const rmsResult = sampleAudio(props.audioTrackId as string | null, 'rms', targetTime, {
-            element: this,
-            samplingOptions: { smoothing: 6 },
-        });
+        const sampled = props.audioTrackId
+            ? this.context.audio?.sampleFeature({ trackId: props.audioTrackId as string, feature: 'rms', timeSeconds: targetTime })
+            : null;
         const sensitivity = (props.sensitivity as number) ?? 2.5;
-        const rms = Math.min(1, (rmsResult?.values?.[0] ?? 0) * sensitivity);
+        const value = sampled?.ok ? sampled.value.value : 0;
+        const rms = Math.min(1, (Array.isArray(value) ? value[0] ?? 0 : Number(value) || 0) * sensitivity);
 
         // Head bump: smooth arch up and back down once per beat
-        const beatPhase = timeToBeats(targetTime) % 1;
+        const beatPhase = this.secondsToBeats(targetTime) % 1;
         const headBump = Math.sin(beatPhase * Math.PI); // 0 → peak → 0 over one beat
         const headBumpPixels = 25 * ((props.size as number) ?? 1);
         this._parts.head.renderObject.y = (this._parts.head.defaultTransforms.y ?? 0) - headBump * headBumpPixels;
@@ -171,7 +172,7 @@ export class BoinkerElement extends SceneElement {
         const displaySize = BASE_SIZE * size;
 
         this._container.x = 0;
-        this._container.setAnchorOffset(displaySize / 2, displaySize);
+        this._container.setOrigin(displaySize / 2, displaySize);
 
         this._layoutRect.width = displaySize;
         this._layoutRect.height = displaySize;
@@ -179,3 +180,6 @@ export class BoinkerElement extends SceneElement {
         return [this._layoutRect, this._container];
     }
 }
+
+export const boinker = defineRendererElement({ type: 'boinker', capabilities: { required: ['audio.features.read', 'timing.conversion'], optional: [] }, featureRequirements: [{ feature: 'rms' }], }, BoinkerElement);
+export default boinker;

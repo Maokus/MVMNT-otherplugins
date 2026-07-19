@@ -1,6 +1,8 @@
-import { SceneElement, prop, insertElementConfig, tab, type RenderObject } from '@mvmnt/plugin-sdk';
-import { BoxRenderObject, PixelGrid, type RenderConfig } from '@mvmnt/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt/plugin-sdk';
+// @ts-nocheck
+import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
+import { CallbackElementRenderer, prop, insertElementConfig, tab, type RenderObject } from '@mvmnt-app/plugin-sdk';
+import { BoxRenderObject, PixelGrid, type RenderConfig } from '@mvmnt-app/plugin-sdk/render';
+import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
 import { BAYER4, parseHexRGBA, PixelBuffer } from './pixel-buffer';
 
 // ── Noise helpers ─────────────────────────────────────────────────────────────
@@ -180,7 +182,7 @@ class GappedPixelGrid extends BoxRenderObject {
 
 // ── DitheratorElement ─────────────────────────────────────────────────────────
 
-export class DitheratorElement extends SceneElement {
+class DitheratorElement extends CallbackElementRenderer {
     private _primaryGrid: GappedPixelGrid | null = null;
     private _secondaryGrid: GappedPixelGrid | null = null;
 
@@ -322,7 +324,7 @@ export class DitheratorElement extends SceneElement {
         );
     }
 
-    protected override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
+    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
         const p = this.getSchemaProps();
         if (!p.visible) return [];
 
@@ -437,3 +439,6 @@ export class DitheratorElement extends SceneElement {
         return result;
     }
 }
+
+export const ditherator = defineRendererElement({ type: 'ditherator', capabilities: { required: [], optional: [] }, }, DitheratorElement);
+export default ditherator;

@@ -1,0 +1,15 @@
+{
+  "id": "us.maok.audiopack1",
+  "name": "Audio Pack 1",
+  "version": "1.0.0",
+  "apiVersion": "^2.0.0",
+  "description": "Custom plugin",
+  "author": "Your Name",
+  "elements": [
+    {
+      "type": "transient-display",
+      "entry": "transient-display.ts",
+      "capabilities": { "required": ["audio.features.read", "audio.raw.read", "timing.conversion", "timeline.read", "audio.calculators.register"], "optional": [] }
+    }
+  ]
+}

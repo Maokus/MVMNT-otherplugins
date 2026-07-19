@@ -2,13 +2,14 @@
   "id": "us.maok.circleoffifths",
   "name": "Circle Of Fifths",
   "version": "1.0.0",
-  "apiVersion": "^1.1.0",
+  "apiVersion": "^2.0.0",
   "description": "Custom plugin",
   "author": "Your Name",
   "elements": [
     {
       "type": "sonofield-circle",
-      "entry": "sonofield-circle.ts"
+      "entry": "sonofield-circle.ts",
+      "capabilities": { "required": ["timeline.read"], "optional": [] }
     }
   ]
 }
