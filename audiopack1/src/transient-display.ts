@@ -1,4 +1,5 @@
-import { defineRendererElement,
+import {
+    defineRendererElement,
     CallbackElementRenderer,
     prop,
     insertElementConfig,
@@ -17,11 +18,6 @@ const MIN_TRANSIENT_GAP_SECONDS = 0.08;
 
 function clamp(value: number, min: number, max: number): number {
     return Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : min;
-}
-
-function positiveModulo(value: number, divisor: number): number {
-    if (divisor <= 0) return 0;
-    return ((value % divisor) + divisor) % divisor;
 }
 
 /**
@@ -100,7 +96,45 @@ type TimingApi = {
     ticksToBeats(ticks: number): number;
 };
 
-type TransientSample = { time: number; transient: boolean; frame: number };
+type TransientSample = { time: number; transient: boolean };
+
+type TransientScanCache = {
+    trackId: string;
+    maxInterval: number;
+    start: number;
+    end: number;
+    transientTimes: number[];
+};
+
+function alignDown(value: number, step: number): number {
+    return Math.floor((value + step * 1e-6) / step) * step;
+}
+
+function alignUp(value: number, step: number): number {
+    return Math.ceil((value - step * 1e-6) / step) * step;
+}
+
+function containsSignal(samples: ArrayLike<number>, epsilon = 1e-6): boolean {
+    for (let index = 0; index < samples.length; index += 1) {
+        if (Math.abs(samples[index] ?? 0) > epsilon) return true;
+    }
+    return false;
+}
+
+/** Collapse the interpolated run around each binary calculator frame into one stable marker. */
+function extractTransientTimes(samples: TransientSample[]): number[] {
+    const times: number[] = [];
+    let insideTransient = false;
+    for (const sample of samples) {
+        if (sample.transient) {
+            if (!insideTransient) times.push(sample.time);
+            insideTransient = true;
+        } else {
+            insideTransient = false;
+        }
+    }
+    return times;
+}
 
 function buildWaveformPoints(samples: number[], visibleDuration: number, intervalDuration: number, width: number, height: number) {
     if (!samples.length) return [];
@@ -156,6 +190,7 @@ function getMinimumIntervalSeconds(
 
 class TransientDisplayElement extends CallbackElementRenderer {
     static readonly elementType = 'transient-display' as const;
+    private transientScanCache: TransientScanCache | null = null;
 
     constructor(id: string = 'transient-display', config: Record<string, unknown> = {}) {
         super('transient-display', id, config);
@@ -228,23 +263,23 @@ class TransientDisplayElement extends CallbackElementRenderer {
         const timingFacet = this.context.timing;
         const timing: TimingApi | null = timingFacet
             ? {
-                  secondsToTicks: (value) => {
-                      const result = timingFacet.secondsToTicks(value);
-                      return result.ok ? result.value : null;
-                  },
-                  ticksToSeconds: (value) => {
-                      const result = timingFacet.ticksToSeconds(value);
-                      return result.ok ? result.value : null;
-                  },
-                  beatsToTicks: (value) => {
-                      const result = timingFacet.beatsToTicks(value);
-                      return result.ok ? result.value : 0;
-                  },
-                  ticksToBeats: (value) => {
-                      const result = timingFacet.ticksToBeats(value);
-                      return result.ok ? result.value : 0;
-                  },
-              }
+                secondsToTicks: (value) => {
+                    const result = timingFacet.secondsToTicks(value);
+                    return result.ok ? result.value : null;
+                },
+                ticksToSeconds: (value) => {
+                    const result = timingFacet.ticksToSeconds(value);
+                    return result.ok ? result.value : null;
+                },
+                beatsToTicks: (value) => {
+                    const result = timingFacet.beatsToTicks(value);
+                    return result.ok ? result.value : 0;
+                },
+                ticksToBeats: (value) => {
+                    const result = timingFacet.ticksToBeats(value);
+                    return result.ok ? result.value : 0;
+                },
+            }
             : null;
         const getNoAudioWindow = () => {
             if (timing) return getFallbackWindow(targetTime, 'beat', 4, timing);
@@ -273,31 +308,63 @@ class TransientDisplayElement extends CallbackElementRenderer {
         const signature = timingFacet!.getTimeSignature();
         const beatsPerBar = signature.ok ? signature.value.numerator : 4;
         const stepSeconds = 1 / 120;
-        const scanStart = Math.max(0, targetTime - maxInterval);
-        const scanEnd = targetTime + maxInterval;
-        const rawSamplesResult = audio.sampleFeatureRange({
-            trackId: props.audioTrackId as string,
-            feature: TRANSIENT_FEATURE,
-            startSeconds: scanStart,
-            endSeconds: scanEnd,
-            stepSeconds,
-        });
-        const rawSamples = rawSamplesResult.ok ? rawSamplesResult.value : [];
-        const samples: TransientSample[] = rawSamples.map((sample, index) => {
-            const values = Array.isArray(sample.value) ? sample.value : [Number(sample.value) || 0];
-            return {
-                time: sample.timeSeconds,
-                transient: (values[0] ?? 0) >= 0.5,
-                frame: index,
-            };
-        });
+        const trackId = props.audioTrackId as string;
 
-        const transientTimes: number[] = [];
-        let previousFrame = -1;
-        for (const sample of samples) {
-            if (sample.transient && sample.frame !== previousFrame) transientTimes.push(sample.time);
-            previousFrame = sample.frame;
+        // Both feature and PCM APIs deliberately zero-pad timeline gaps and reads beyond a clip.
+        // Check the signal at the playhead instead of interpreting a non-empty padded buffer as audio.
+        const signalResult = audio.getRawSamples({
+            trackId,
+            startSeconds: Math.max(0, targetTime),
+            endSeconds: Math.max(0, targetTime) + stepSeconds,
+            channel: 'mono',
+        });
+        if (!signalResult.ok || !containsSignal(signalResult.value)) return renderNoAudioLine();
+
+        const scanStart = alignUp(Math.max(0, targetTime - maxInterval), stepSeconds);
+        const scanEnd = alignDown(targetTime + maxInterval, stepSeconds);
+        const cache = this.transientScanCache;
+        const canReuseCache =
+            cache !== null &&
+            cache.trackId === trackId &&
+            cache.maxInterval === maxInterval &&
+            cache.start <= scanStart &&
+            cache.end >= scanEnd;
+        if (!canReuseCache) {
+            // Cache a wider, globally aligned window. This avoids thousands of feature lookups on
+            // every rendered frame and keeps marker times independent of the moving playhead.
+            const cacheStart = alignDown(Math.max(0, targetTime - maxInterval * 2), stepSeconds);
+            const cacheEnd = alignUp(targetTime + maxInterval * 2, stepSeconds);
+            const rawSamplesResult = audio.sampleFeatureRange({
+                trackId,
+                feature: TRANSIENT_FEATURE,
+                startSeconds: cacheStart,
+                endSeconds: cacheEnd,
+                stepSeconds,
+            });
+            const rawSamples = rawSamplesResult.ok ? rawSamplesResult.value : [];
+            if (rawSamples.length) {
+                const samples: TransientSample[] = rawSamples.map((sample) => {
+                    const values = Array.isArray(sample.value) ? sample.value : [Number(sample.value) || 0];
+                    return {
+                        time: sample.timeSeconds,
+                        transient: (values[0] ?? 0) >= 0.5,
+                    };
+                });
+                this.transientScanCache = {
+                    trackId,
+                    maxInterval,
+                    start: cacheStart,
+                    end: cacheEnd,
+                    transientTimes: extractTransientTimes(samples),
+                };
+            } else {
+                // Do not cache a miss: the requested feature calculation may still be in progress.
+                this.transientScanCache = null;
+            }
         }
+        const transientTimes = (this.transientScanCache?.transientTimes ?? []).filter(
+            (time) => time >= scanStart && time <= scanEnd
+        );
         const acceptedTransientTimes: number[] = [];
         for (const transientTime of transientTimes) {
             const previous = acceptedTransientTimes[acceptedTransientTimes.length - 1];
@@ -312,27 +379,29 @@ class TransientDisplayElement extends CallbackElementRenderer {
             : acceptedTransientTimes.filter((time) => time < previousTransient).slice(-1)[0];
         const nextTransient = previousTransient === undefined
             ? undefined
-            : transientTimes.find((time) => time > previousTransient);
+            : acceptedTransientTimes.find((time) => time > previousTransient);
         const fallback = getFallbackWindow(targetTime, props.fallbackLength, beatsPerBar, timing);
         const minimumInterval = previousTransient === undefined
             ? 0
             : getMinimumIntervalSeconds(previousTransient, beatsPerBar, timing);
-        const segment = previousTransient !== undefined && nextTransient !== undefined
+        const segment = previousTransient !== undefined
             ? {
-                  start: previousTransient,
-                  end:
-                      nextTransient - previousTransient < minimumInterval
-                          ? previousTransient + minimumInterval
-                          : nextTransient,
-              }
+                start: previousTransient,
+                end:
+                    previousTransient +
+                    Math.max(
+                        minimumInterval,
+                        Math.min(maxInterval, (nextTransient ?? previousTransient + maxInterval) - previousTransient)
+                    ),
+            }
             : fallback;
         const readPcm = (start: number, end: number) => {
             const result = audio.getRawSamples({
-                    trackId: props.audioTrackId as string,
-                    startSeconds: start,
-                    endSeconds: end,
-                    channel: 'mono',
-                });
+                trackId,
+                startSeconds: start,
+                endSeconds: end,
+                channel: 'mono',
+            });
             return result.ok ? Array.from(result.value) : [];
         };
 
@@ -341,9 +410,8 @@ class TransientDisplayElement extends CallbackElementRenderer {
             ? Math.max(getMinimumIntervalSeconds(previousTransient!, beatsPerBar, timing), segment.end - segment.start)
             : segment.end - segment.start;
         const activeStart = overwrite ? previousTransient! : segment.start;
-        // Wrapping prevents the playhead from waiting at the right edge when an upcoming marker
-        // is not yet available in the feature range. A resolved transient still resets the start.
-        const activeElapsed = positiveModulo(Math.max(0, targetTime - activeStart), overwriteDuration);
+        // Fill for at most maxInterval, then hold at the right edge until the next accepted marker.
+        const activeElapsed = clamp(targetTime - activeStart, 0, overwriteDuration);
         const activeEnd = activeStart + activeElapsed;
         const activePcm = readPcm(activeStart, activeEnd);
         if (activeEnd > activeStart && activePcm.length === 0) return renderNoAudioLine();
