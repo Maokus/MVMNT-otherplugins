@@ -9,7 +9,23 @@
     {
       "type": "sonofield-circle",
       "entry": "src/sonofield-circle.ts",
-      "capabilities": { "required": ["timeline.read"], "optional": [] }
+      "capabilities": {
+        "required": [
+          "timeline.read"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "dingerbox-circle",
+      "entry": "src/dingerbox-circle.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read",
+          "midi.utils"
+        ],
+        "optional": []
+      }
     }
   ]
 }

@@ -1,6 +1,7 @@
 import { definePluginElement } from '@mvmnt-app/plugin-sdk';
 import { ClipLayer, Rectangle } from '@mvmnt-app/plugin-sdk/render';
 
+
 interface CheckersProps extends Readonly<Record<string, unknown>> {
     readonly patternWidth: number;
     readonly patternHeight: number;
