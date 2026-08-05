@@ -147,11 +147,30 @@ class CircularPianoRollElement extends CallbackElementRenderer {
                                 description: 'Highest note shown. Set to -1 to auto-detect from the track.',
                                 visibleWhen: [{ key: 'ringMode', equals: 'polar' }],
                             }),
-                            prop.number('polarNoteHeight', 'Note Lane Height (px)', 8, {
+                            prop.number('polarNoteHeight', 'Note Height (px)', 8, {
+                                min: 1,
                                 step: 1,
+                                description: 'Radial thickness of each note. Values larger than a pitch lane may overlap adjacent lanes.',
                                 visibleWhen: [{ key: 'ringMode', equals: 'polar' }],
                             }),
-                            prop.number('timeWindowBars', 'Time Window (bars)', 2, { min: 1, max: 16, step: 1 }),
+                            prop.select('speedMode', 'Speed Mode', 'range', [
+                                { value: 'range', label: 'Range' },
+                                { value: 'speed', label: 'Speed' },
+                            ]),
+                            prop.number('timeWindowBars', 'Time Window (bars)', 2, {
+                                min: 1,
+                                max: 16,
+                                step: 1,
+                                description: 'Time on either side of the playhead.',
+                                visibleWhen: [{ key: 'speedMode', equals: 'range' }],
+                            }),
+                            prop.number('angularSpeed', 'Angular Speed (°/s)', 90, {
+                                min: 1,
+                                max: 1440,
+                                step: 1,
+                                description: 'Degrees travelled per second. Higher values move notes faster and show a smaller time window.',
+                                visibleWhen: [{ key: 'speedMode', equals: 'speed' }],
+                            }),
                             prop.number('startAngle', 'Start Angle (°)', 0, { min: 0, max: 360, step: 1 }),
                             prop.number('endAngle', 'End Angle (°)', 360, { min: 0, max: 360, step: 1 }),
                             prop.number('playheadPosition', 'Playhead Position', 0.5, { min: 0, max: 1, step: 0.01 }),
@@ -312,9 +331,6 @@ class CircularPianoRollElement extends CallbackElementRenderer {
         const metadata = timeline.getMetadata();
         const bpm = metadata.ok ? metadata.value.tempoBpm : 120;
         const beatsPerBar = metadata.ok ? metadata.value.timeSignature.numerator : 4;
-        const timeWindowBars = Math.max(1, Math.round((p.timeWindowBars as number) ?? 2));
-        const timeWindowDuration = timeWindowBars * beatsPerBar * (60 / bpm);
-
         const ringMode = (p.ringMode as string) ?? 'ring';
         const ringRadius = Math.max(40, (p.ringRadius as number) ?? 200);
         const ringWidth = Math.max(4, (p.ringWidth as number) ?? 20);
@@ -355,6 +371,17 @@ class CircularPianoRollElement extends CallbackElementRenderer {
         const arcSpanRad = (arcSpanDeg * Math.PI) / 180;
         const endAngleRad = startAngleRad + arcSpanRad;
         const triggerAngle = startAngleRad + playheadPosition * arcSpanRad;
+
+        // Range mode keeps the familiar bar-based time window. Speed mode maps
+        // real time directly to angular motion, so a full visible arc takes
+        // arcSpanDeg / angularSpeed seconds to traverse.
+        const speedMode = (p.speedMode as string) ?? 'range';
+        const timeWindowBars = Math.max(1, Math.round((p.timeWindowBars as number) ?? 2));
+        const rangeWindowDuration = timeWindowBars * beatsPerBar * (60 / bpm);
+        const angularSpeed = Math.max(1, (p.angularSpeed as number) ?? 90);
+        const timeWindowDuration = speedMode === 'speed'
+            ? arcSpanDeg / angularSpeed
+            : rangeWindowDuration;
 
         const colorMode = (p.colorMode as string) ?? 'pitch';
         const noteColor = (p.noteColor as string) ?? '#FF6B6BCC';
@@ -580,7 +607,7 @@ class CircularPianoRollElement extends CallbackElementRenderer {
                         const noteRadius = radiusFromNote(n.note);
 
                         // Pulse: expand radially (increase stroke width) on hit
-                        let arcStrokeWidth = Math.min(polarNoteHeight, laneHeight);
+                        let arcStrokeWidth = polarNoteHeight;
                         if (pulseOnHit && timeSinceHit >= 0 && timeSinceHit <= animDuration) {
                             const progress = timeSinceHit / animDuration;
                             const env = Math.sin(Math.PI * progress);

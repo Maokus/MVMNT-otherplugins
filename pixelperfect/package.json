@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": { "typecheck": "tsc --noEmit" },
   "dependencies": {
-    "@mvmnt-app/plugin-sdk": "file:../../../MVMNT/packages/plugin-sdk",
+    "@mvmnt-app/plugin-sdk": "file:../../MVMNT/packages/plugin-sdk",
     "seedrandom": "^3.0.5"
   },
   "devDependencies": {

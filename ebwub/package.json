@@ -4,6 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": { "typecheck": "tsc --noEmit" },
-  "dependencies": { "@mvmnt-app/plugin-sdk": "file:../../../MVMNT/packages/plugin-sdk" },
+  "dependencies": { "@mvmnt-app/plugin-sdk": "file:../../MVMNT/packages/plugin-sdk" },
   "devDependencies": { "typescript": "^5.9.3" }
 }
