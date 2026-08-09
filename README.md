@@ -17,6 +17,7 @@ assets. Connect to it from **Scene Settings → Debug** in a development build o
 `npm run build` to write the distributable `.mvmnt-plugin` archive under that plugin's `dist/`
 folder, and `npm run typecheck` when only a fast TypeScript pass is needed.
 
-The projects also contain a small local `sdk-compat.ts` module for their class-based renderers. It
-adapts those existing implementations to the current `definePluginElement()` lifecycle without
-reintroducing SDK-level compatibility APIs; capabilities remain declared only in `plugin.json`.
+Stateful elements export `definePluginElement()` directly. Their ordinary state classes receive the SDK props and
+context in `create()`, update their property bag in `render()`, and release asset handles in `dispose()`. The small
+local `element-runtime.ts` modules only manage that per-instance context and asset ownership; they do not provide
+an alternative element-definition API. Capabilities remain declared only in `plugin.json`.

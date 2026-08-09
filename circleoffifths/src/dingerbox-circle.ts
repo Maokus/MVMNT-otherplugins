@@ -1,19 +1,12 @@
-import { defineRendererElement } from './sdk-compat';
+import { definePluginElement, ensureFontLoaded, parseFontSelection, prop, tab } from '@mvmnt-app/plugin-sdk';
+import { Arc, Line, Poly, Rectangle, Text, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import {
-    Arc,
-    CallbackElementRenderer,
-    ensureFontLoaded,
+    ElementRuntime,
     insertElementConfig,
-    Line,
-    parseFontSelection,
-    Poly,
-    Rectangle,
-    Text,
-    prop,
-    tab,
-    type RenderObject,
-} from './sdk-compat';
-import type { EnhancedConfigSchema } from './sdk-compat';
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 import * as af from '@mvmnt-app/plugin-sdk/animation';
 
 const TAU = Math.PI * 2;
@@ -89,14 +82,15 @@ function activePitchClasses(
     return states;
 }
 
-class DingerboxCircleElement extends CallbackElementRenderer {
-    constructor(id = 'dingerbox-circle', config: Record<string, unknown> = {}) {
-        super('dingerbox-circle', id, config);
+class DingerboxCircleElement {
+    readonly runtime = new ElementRuntime();
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Dingerbox Circle',
                 description: 'A minimal circle of fifths that highlights active MIDI notes.',
@@ -165,8 +159,8 @@ class DingerboxCircleElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const props = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const props = this.runtime.props;
         if (!props.visible) return [];
 
         const radius = props.radius as number;
@@ -186,17 +180,20 @@ class DingerboxCircleElement extends CallbackElementRenderer {
         ];
 
         const notesResult = props.midiTrackId
-            ? this.context.timeline?.selectNotes({
+            ? this.runtime.context.timeline?.selectNotes({
                   trackIds: [props.midiTrackId as string],
                   startSeconds: targetTime - releaseDuration,
                   endSeconds: targetTime + 0.001,
               })
             : undefined;
-        const noteStates = notesResult?.ok ? activePitchClasses(notesResult.value, targetTime, releaseDuration) : new Map();
+        const noteStates = notesResult?.ok
+            ? activePitchClasses(notesResult.value, targetTime, releaseDuration)
+            : new Map();
         const livePitchClasses = new Set<number>();
         if (notesResult?.ok) {
             for (const note of notesResult.value) {
-                if (note.startSeconds <= targetTime && targetTime < note.endSeconds) livePitchClasses.add(pitchClass(note.note));
+                if (note.startSeconds <= targetTime && targetTime < note.endSeconds)
+                    livePitchClasses.add(pitchClass(note.note));
             }
         }
 
@@ -284,9 +281,27 @@ class DingerboxCircleElement extends CallbackElementRenderer {
     }
 }
 
-export const dingerboxCircle = defineRendererElement(
-    { type: 'dingerbox-circle' },
-    DingerboxCircleElement
-);
+const dingerboxCircleSchema = DingerboxCircleElement.getConfigSchema();
+
+export const dingerboxCircle = definePluginElement({
+    type: 'dingerbox-circle',
+    metadata: {
+        name: dingerboxCircleSchema.name,
+        description: dingerboxCircleSchema.description,
+        category: dingerboxCircleSchema.category,
+    },
+    schema: dingerboxCircleSchema,
+    create(props, context) {
+        const renderer = new DingerboxCircleElement(props, context);
+        return renderer;
+    },
+    render(props, renderer, time) {
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
+    },
+    dispose(renderer) {
+        renderer.runtime.dispose();
+    },
+});
 
 export default dingerboxCircle;

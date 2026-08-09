@@ -1,34 +1,31 @@
 // @ts-nocheck
-import { definePluginElement } from './sdk-compat';
+import { definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
 // VidilikePianoRoll — notes scroll right-to-left past a static playhead.
 // When a note's head crosses the playhead a marker, ripple, and/or animation trigger.
 
+import { GlowLayer, Line, Rectangle, Text, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import {
-    CallbackElementRenderer,
-    prop,
+    ElementRuntime,
     insertElementConfig,
-    tab,
-    Rectangle,
-    Text,
-    Line,
-    GlowLayer,
-    type RenderObject,
-} from './sdk-compat';
-import type { EnhancedConfigSchema } from './sdk-compat';
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 import { pushHitEffects, getPressTransform, getPluckTransform } from './piano-roll-effects';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Element
 // ─────────────────────────────────────────────────────────────────────────────
 
-class VidilikePianoRollElement extends CallbackElementRenderer {
-    constructor(id: string = 'vidilike-piano-roll', config: Record<string, unknown> = {}) {
-        super('vidilike-piano-roll', id, config);
+class VidilikePianoRollElement {
+    readonly runtime = new ElementRuntime();
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Vidilike Piano Roll',
                 description:
@@ -195,14 +192,14 @@ class VidilikePianoRollElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const p = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const p = this.runtime.props;
         if (!p.visible) return [];
 
         const objects: RenderObject[] = [];
 
         // ── Timeline API ────────────────────────────────────────────────────
-        const timeline = this.context.timeline;
+        const timeline = this.runtime.context.timeline;
         if (!timeline) {
             objects.push(
                 new Text(0, 0, 'Timeline API unavailable', '12px sans-serif', {
@@ -437,19 +434,22 @@ class VidilikePianoRollElement extends CallbackElementRenderer {
 
 export const vidilikePianoRoll = definePluginElement({
     type: 'vidilike-piano-roll',
-    metadata: { name: 'Vidilike Piano Roll', description: 'Notes scrolling right-to-left past a static playhead', category: 'us.maok.midipack1' },
+    metadata: {
+        name: 'Vidilike Piano Roll',
+        description: 'Notes scrolling right-to-left past a static playhead',
+        category: 'us.maok.midipack1',
+    },
     schema: VidilikePianoRollElement.getConfigSchema(),
     create(props, context) {
-        const renderer = new VidilikePianoRollElement('vidilike-piano-roll', { ...props });
-        renderer.__attach(context, props);
+        const renderer = new VidilikePianoRollElement(props, context);
         return renderer;
     },
     render(props, renderer, time) {
-        renderer.__update(props);
-        return renderer._buildRenderObjects({}, time.seconds);
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
     },
     dispose(renderer) {
-        renderer.__dispose();
+        renderer.runtime.dispose();
     },
 });
 export default vidilikePianoRoll;

@@ -1,13 +1,12 @@
-import { defineRendererElement } from './sdk-compat';
+import { definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
+import { PixelGrid, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import {
-    CallbackElementRenderer,
-    prop,
+    ElementRuntime,
     insertElementConfig,
-    tab,
-    type RenderObject,
-} from './sdk-compat';
-import { PixelGrid } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from './sdk-compat';
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 import { parseHex6, BAYER4 } from './pixel-buffer';
 import * as af from '@mvmnt-app/plugin-sdk/animation';
 import alea from 'seedrandom';
@@ -115,20 +114,21 @@ function intensityToPixels(
 
 // ── Element ──────────────────────────────────────────────────────────────────
 
-class AmurulikePianorollElement extends CallbackElementRenderer {
+class AmurulikePianorollElement {
+    readonly runtime = new ElementRuntime();
     private _grid: PixelGrid | null = null;
     private _gridCols = 0;
     private _gridRows = 0;
     private _gridCellSize = 0;
     private _matrix: IntensityMatrix | null = null;
 
-    constructor(id: string = 'amurulike-pianoroll', config: Record<string, unknown> = {}) {
-        super('amurulike-pianoroll', id, config);
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Amurulike Pianoroll',
                 description:
@@ -276,8 +276,8 @@ class AmurulikePianorollElement extends CallbackElementRenderer {
 
     // ── Render ────────────────────────────────────────────────────────────────
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const p = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const p = this.runtime.props;
         if (!p.visible) return [];
 
         const cols = Math.max(1, Math.round(p.cols as number));
@@ -364,14 +364,17 @@ class AmurulikePianorollElement extends CallbackElementRenderer {
             const queryStart = targetTime - playheadFraction * windowDuration - 4;
             const queryEnd = targetTime + (1 - playheadFraction) * windowDuration;
 
-            const notesResult = this.context.timeline?.selectNotes({
+            const notesResult = this.runtime.context.timeline?.selectNotes({
                 trackIds: [p.midiTrackId as string],
                 startSeconds: queryStart,
                 endSeconds: queryEnd,
             });
             if (!notesResult?.ok) return [];
-            const notes = notesResult.value
-                .map((note) => ({ ...note, startTime: note.startSeconds, endTime: note.endSeconds }));
+            const notes = notesResult.value.map((note) => ({
+                ...note,
+                startTime: note.startSeconds,
+                endTime: note.endSeconds,
+            }));
 
             notes.sort((a, b) => (a.velocity ?? 64) - (b.velocity ?? 64));
 
@@ -404,7 +407,11 @@ class AmurulikePianorollElement extends CallbackElementRenderer {
                 const headIntensity =
                     elapsed >= 0 ? af.remap(0, 1, 1, 0, af.clamp((1 / fadeOutDuration) * elapsed, 0, 1)) : 1;
                 this._writeIntensity(
-                    matrix, cols, rows, info.col, info.row,
+                    matrix,
+                    cols,
+                    rows,
+                    info.col,
+                    info.row,
                     headVelIntensity ? headIntensity * velNorm : headIntensity
                 );
 
@@ -447,7 +454,8 @@ class AmurulikePianorollElement extends CallbackElementRenderer {
                                 rows,
                                 playheadCol + i,
                                 info.row + j,
-                                effectiveRingIntensity * distToIntensity(rippleShape(currentRadius, i, j), rippleThickness)
+                                effectiveRingIntensity *
+                                    distToIntensity(rippleShape(currentRadius, i, j), rippleThickness)
                             );
                         }
                     }
@@ -481,5 +489,26 @@ class AmurulikePianorollElement extends CallbackElementRenderer {
     }
 }
 
-export const amurulikePianoroll = defineRendererElement({ type: 'amurulike-pianoroll' }, AmurulikePianorollElement);
+const amurulikePianorollSchema = AmurulikePianorollElement.getConfigSchema();
+
+export const amurulikePianoroll = definePluginElement({
+    type: 'amurulike-pianoroll',
+    metadata: {
+        name: amurulikePianorollSchema.name,
+        description: amurulikePianorollSchema.description,
+        category: amurulikePianorollSchema.category,
+    },
+    schema: amurulikePianorollSchema,
+    create(props, context) {
+        const renderer = new AmurulikePianorollElement(props, context);
+        return renderer;
+    },
+    render(props, renderer, time) {
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
+    },
+    dispose(renderer) {
+        renderer.runtime.dispose();
+    },
+});
 export default amurulikePianoroll;

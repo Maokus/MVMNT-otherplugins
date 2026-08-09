@@ -1,18 +1,13 @@
 // @ts-nocheck
-import { definePluginElement } from './sdk-compat';
+import { definePluginElement, parseFontSelection, ensureFontLoaded, prop, tab } from '@mvmnt-app/plugin-sdk';
+import { Arc, Rectangle, Text, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import {
-    CallbackElementRenderer,
-    Rectangle,
-    Arc,
-    Text,
-    parseFontSelection,
-    ensureFontLoaded,
-    prop,
+    ElementRuntime,
     insertElementConfig,
-    tab,
-    type RenderObject,
-} from './sdk-compat';
-import type { EnhancedConfigSchema } from './sdk-compat';
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 
 function easeOutCubic(t: number): number {
     return 1 - Math.pow(1 - t, 3);
@@ -31,14 +26,15 @@ function archCurve(x: number): number {
     return -Math.pow((x - 0.5) * 2, 4) + 1;
 }
 
-class CollisionMidiDisplayElement extends CallbackElementRenderer {
-    constructor(id: string = 'collision-midi-display', config: Record<string, unknown> = {}) {
-        super('collision-midi-display', id, config);
+class CollisionMidiDisplayElement {
+    readonly runtime = new ElementRuntime();
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Collision Midi Display',
                 description: 'MIDI display which shows notes as the collision of shapes',
@@ -153,25 +149,33 @@ class CollisionMidiDisplayElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const props = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const props = this.runtime.props;
 
         if (!props.visible) return [];
 
         const objects: RenderObject[] = [];
 
         if (!props.midiTrackId) {
-            objects.push(new Text(0, 0, 'Select a MIDI track', '14px Inter, sans-serif', {
-                color: '#94a3b8', align: 'left', baseline: 'top',
-            }));
+            objects.push(
+                new Text(0, 0, 'Select a MIDI track', '14px Inter, sans-serif', {
+                    color: '#94a3b8',
+                    align: 'left',
+                    baseline: 'top',
+                })
+            );
             return objects;
         }
 
-        const timeline = this.context.timeline;
+        const timeline = this.runtime.context.timeline;
         if (!timeline) {
-            objects.push(new Text(0, 0, 'Timeline API unavailable', '12px Inter, sans-serif', {
-                color: '#64748b', align: 'left', baseline: 'top',
-            }));
+            objects.push(
+                new Text(0, 0, 'Timeline API unavailable', '12px Inter, sans-serif', {
+                    color: '#64748b',
+                    align: 'left',
+                    baseline: 'top',
+                })
+            );
             return objects;
         }
 
@@ -230,9 +234,13 @@ class CollisionMidiDisplayElement extends CallbackElementRenderer {
             .filter((p) => p >= minNote && p <= maxNote);
 
         if (distinctPitches.length === 0) {
-            objects.push(new Text(0, 0, 'No notes in track', '12px Inter, sans-serif', {
-                color: '#64748b', align: 'left', baseline: 'top',
-            }));
+            objects.push(
+                new Text(0, 0, 'No notes in track', '12px Inter, sans-serif', {
+                    color: '#64748b',
+                    align: 'left',
+                    baseline: 'top',
+                })
+            );
             return objects;
         }
 
@@ -352,9 +360,11 @@ class CollisionMidiDisplayElement extends CallbackElementRenderer {
 
             // --- Note name label ---
             if (showNoteNames) {
-                const noteName = this.context.midi?.noteName(pitch) ?? String(pitch);
+                const noteName = this.runtime.context.midi?.noteName(pitch) ?? String(pitch);
                 const label = new Text(cx, radius + 5, noteName, labelFontString, {
-                    color: '#94a3b8', align: 'center', baseline: 'top',
+                    color: '#94a3b8',
+                    align: 'center',
+                    baseline: 'top',
                 });
                 objects.push(label);
             }
@@ -366,19 +376,22 @@ class CollisionMidiDisplayElement extends CallbackElementRenderer {
 
 export const collisionMidiDisplay = definePluginElement({
     type: 'collision-midi-display',
-    metadata: { name: 'Collision MIDI Display', description: 'MIDI-reactive collision display', category: 'us.maok.midipack1' },
+    metadata: {
+        name: 'Collision MIDI Display',
+        description: 'MIDI-reactive collision display',
+        category: 'us.maok.midipack1',
+    },
     schema: CollisionMidiDisplayElement.getConfigSchema(),
     create(props, context) {
-        const renderer = new CollisionMidiDisplayElement('collision-midi-display', { ...props });
-        renderer.__attach(context, props);
+        const renderer = new CollisionMidiDisplayElement(props, context);
         return renderer;
     },
     render(props, renderer, time) {
-        renderer.__update(props);
-        return renderer._buildRenderObjects({}, time.seconds);
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
     },
     dispose(renderer) {
-        renderer.__dispose();
+        renderer.runtime.dispose();
     },
 });
 export default collisionMidiDisplay;

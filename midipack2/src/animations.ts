@@ -1,4 +1,4 @@
-import type { RenderObject } from './sdk-compat';
+import type { RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import * as af from '@mvmnt-app/plugin-sdk/animation';
 
 export const JUMP_DURATION = 0.3;

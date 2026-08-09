@@ -1,7 +1,12 @@
-import { defineRendererElement } from './sdk-compat';
-import { CallbackElementRenderer, prop, insertElementConfig, tab, type RenderObject } from './sdk-compat';
-import { PixelGrid } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from './sdk-compat';
+import { definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
+import { PixelGrid, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
+import {
+    ElementRuntime,
+    insertElementConfig,
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 import { BAYER4, parseHexRGBA, PixelBuffer } from './pixel-buffer';
 
 // ── Noise helpers ─────────────────────────────────────────────────────────────
@@ -154,17 +159,18 @@ class GappedPixelGrid extends PixelGrid {
 
 // ── DitheratorElement ─────────────────────────────────────────────────────────
 
-class DitheratorElement extends CallbackElementRenderer {
+class DitheratorElement {
+    readonly runtime = new ElementRuntime();
     private _primaryGrid: GappedPixelGrid | null = null;
     private _secondaryGrid: GappedPixelGrid | null = null;
 
-    constructor(id: string = 'ditherator', config: Record<string, unknown> = {}) {
-        super('ditherator', id, config);
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Ditherator',
                 description: 'A dithered grid of squares driven by procedural texture functions.',
@@ -296,8 +302,8 @@ class DitheratorElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const p = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const p = this.runtime.props;
         if (!p.visible) return [];
 
         const cols = Math.max(1, Math.round(p.cols as number));
@@ -412,5 +418,26 @@ class DitheratorElement extends CallbackElementRenderer {
     }
 }
 
-export const ditherator = defineRendererElement({ type: 'ditherator' }, DitheratorElement);
+const ditheratorSchema = DitheratorElement.getConfigSchema();
+
+export const ditherator = definePluginElement({
+    type: 'ditherator',
+    metadata: {
+        name: ditheratorSchema.name,
+        description: ditheratorSchema.description,
+        category: ditheratorSchema.category,
+    },
+    schema: ditheratorSchema,
+    create(props, context) {
+        const renderer = new DitheratorElement(props, context);
+        return renderer;
+    },
+    render(props, renderer, time) {
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
+    },
+    dispose(renderer) {
+        renderer.runtime.dispose();
+    },
+});
 export default ditherator;

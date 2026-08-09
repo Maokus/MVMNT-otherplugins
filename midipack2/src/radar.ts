@@ -1,16 +1,15 @@
-import { defineRendererElement } from './sdk-compat';
+import { definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
 // Radar — a sweeping playhead rotates around the centre. When it crosses a note's
 // phase position a marker appears at the corresponding pitch radius and fades out.
 
+import { Arc, Line, Rectangle, Text, GlowLayer, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import {
-    CallbackElementRenderer,
-    prop,
+    ElementRuntime,
     insertElementConfig,
-    tab,
-    type RenderObject,
-} from './sdk-compat';
-import { Arc, Line, Rectangle, Text, GlowLayer } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from './sdk-compat';
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 import * as af from '@mvmnt-app/plugin-sdk/animation';
 import { applyAnimation } from './animations';
 
@@ -65,9 +64,13 @@ function makeMarker(
     else if (type === 'note') char = '♪';
     else char = customText || '?';
     const fontSize = Math.max(8, Math.round(size));
-    return noLayout(new Text(cx, cy, char, `bold ${fontSize}px sans-serif`, {
-        color: colorA, align: 'center', baseline: 'middle',
-    }));
+    return noLayout(
+        new Text(cx, cy, char, `bold ${fontSize}px sans-serif`, {
+            color: colorA,
+            align: 'center',
+            baseline: 'middle',
+        })
+    );
 }
 
 function makeRipple(
@@ -124,14 +127,15 @@ function makeRipple(
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-class RadarElement extends CallbackElementRenderer {
-    constructor(id: string = 'radar', config: Record<string, unknown> = {}) {
-        super('radar', id, config);
+class RadarElement {
+    readonly runtime = new ElementRuntime();
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Radar',
                 description: 'Sweeping playhead marks note hits with a marker at their pitch radius.',
@@ -295,17 +299,21 @@ class RadarElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const p = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const p = this.runtime.props;
         if (!p.visible) return [];
 
         if (!p.midiTrackId) {
-            return [new Text(0, 0, 'Select a MIDI track', '14px sans-serif', {
-                color: '#94a3b8', align: 'left', baseline: 'top',
-            })];
+            return [
+                new Text(0, 0, 'Select a MIDI track', '14px sans-serif', {
+                    color: '#94a3b8',
+                    align: 'left',
+                    baseline: 'top',
+                }),
+            ];
         }
 
-        const timeline = this.context.timeline;
+        const timeline = this.runtime.context.timeline;
         if (!timeline) return [];
 
         // ── Config ───────────────────────────────────────────────────────────
@@ -484,5 +492,22 @@ class RadarElement extends CallbackElementRenderer {
     }
 }
 
-export const radar = defineRendererElement({ type: 'radar' }, RadarElement);
+const radarSchema = RadarElement.getConfigSchema();
+
+export const radar = definePluginElement({
+    type: 'radar',
+    metadata: { name: radarSchema.name, description: radarSchema.description, category: radarSchema.category },
+    schema: radarSchema,
+    create(props, context) {
+        const renderer = new RadarElement(props, context);
+        return renderer;
+    },
+    render(props, renderer, time) {
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
+    },
+    dispose(renderer) {
+        renderer.runtime.dispose();
+    },
+});
 export default radar;

@@ -1,17 +1,12 @@
-import { defineRendererElement } from './sdk-compat';
+import { definePluginElement, ensureFontLoaded, parseFontSelection, prop, tab } from '@mvmnt-app/plugin-sdk';
+import { Arc, Rectangle, Text, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import {
-    Arc,
-    ensureFontLoaded,
-    parseFontSelection,
-    Rectangle,
-    CallbackElementRenderer,
-    Text,
+    ElementRuntime,
     insertElementConfig,
-    prop,
-    tab,
-    type RenderObject,
-} from './sdk-compat';
-import type { EnhancedConfigSchema } from './sdk-compat';
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 import * as af from '@mvmnt-app/plugin-sdk/animation';
 
 const PITCH_CLASSES = [
@@ -163,14 +158,15 @@ function onsetNodeScale(progress: number): number {
     return PRE_ONSET_NODE_SCALE + (1 - PRE_ONSET_NODE_SCALE) * af.easings.easeOutBack(progress);
 }
 
-class SonofieldCircleElement extends CallbackElementRenderer {
-    constructor(id: string = 'sonofield-circle', config: Record<string, unknown> = {}) {
-        super('sonofield-circle', id, config);
+class SonofieldCircleElement {
+    readonly runtime = new ElementRuntime();
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Sonofield Circle',
                 description: 'A circle-of-fifths map of the tonal function of active MIDI notes.',
@@ -261,8 +257,8 @@ class SonofieldCircleElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const props = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const props = this.runtime.props;
         if (!props.visible) return [];
 
         const radius = props.radius as number;
@@ -295,7 +291,7 @@ class SonofieldCircleElement extends CallbackElementRenderer {
         ];
 
         if (props.midiTrackId) {
-            const notesResult = this.context.timeline?.selectNotes({
+            const notesResult = this.runtime.context.timeline?.selectNotes({
                 trackIds: [props.midiTrackId as string],
                 startSeconds: targetTime - releaseDuration,
                 endSeconds: targetTime + PRE_ONSET_DURATION_SECONDS,
@@ -408,13 +404,11 @@ class SonofieldCircleElement extends CallbackElementRenderer {
             if (props.showDegreeLabels) {
                 objects.push(
                     excludeFromLayout(
-                        new Text(
-                            x,
-                            y + 1,
-                            DEGREE_LABELS[semitonesFromTonic],
-                            labelFont,
-                            { color: '#FFFFFFFF', align: 'center', baseline: 'middle' }
-                        )
+                        new Text(x, y + 1, DEGREE_LABELS[semitonesFromTonic], labelFont, {
+                            color: '#FFFFFFFF',
+                            align: 'center',
+                            baseline: 'middle',
+                        })
                     )
                 );
             }
@@ -424,8 +418,26 @@ class SonofieldCircleElement extends CallbackElementRenderer {
     }
 }
 
-export const sonofieldCircle = defineRendererElement(
-    { type: 'sonofield-circle' },
-    SonofieldCircleElement
-);
+const sonofieldCircleSchema = SonofieldCircleElement.getConfigSchema();
+
+export const sonofieldCircle = definePluginElement({
+    type: 'sonofield-circle',
+    metadata: {
+        name: sonofieldCircleSchema.name,
+        description: sonofieldCircleSchema.description,
+        category: sonofieldCircleSchema.category,
+    },
+    schema: sonofieldCircleSchema,
+    create(props, context) {
+        const renderer = new SonofieldCircleElement(props, context);
+        return renderer;
+    },
+    render(props, renderer, time) {
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
+    },
+    dispose(renderer) {
+        renderer.runtime.dispose();
+    },
+});
 export default sonofieldCircle;

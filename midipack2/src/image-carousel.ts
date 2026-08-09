@@ -1,46 +1,39 @@
-import { defineRendererElement } from './sdk-compat';
+import { definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
+import { VisualMedia, Text, Rectangle, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import {
-    CallbackElementRenderer,
-    prop,
+    ElementRuntime,
     insertElementConfig,
-    tab,
-
-    type RenderObject,
-} from './sdk-compat';
-import { VisualMedia, Text, Rectangle } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from './sdk-compat';
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 import { applyAnimation, FLIP_PRE } from './animations';
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-class ImageCarouselElement extends CallbackElementRenderer {
+class ImageCarouselElement {
+    readonly runtime = new ElementRuntime();
     private readonly _bundled = [
-        this.bundledImage('bocchi_200px.png'),
-        this.bundledImage('kita_200px.png'),
-        this.bundledImage('nijika_200px.png'),
-        this.bundledImage('ryo_200px.png'),
+        this.runtime.bundledImage('bocchi_200px.png'),
+        this.runtime.bundledImage('kita_200px.png'),
+        this.runtime.bundledImage('nijika_200px.png'),
+        this.runtime.bundledImage('ryo_200px.png'),
     ] as const;
 
     private readonly _userHandles = [
-        this.visualHandle(),
-        this.visualHandle(),
-        this.visualHandle(),
-        this.visualHandle(),
+        this.runtime.visualHandle(),
+        this.runtime.visualHandle(),
+        this.runtime.visualHandle(),
+        this.runtime.visualHandle(),
     ] as const;
 
-    constructor(id: string = 'image-carousel', config: Record<string, unknown> = {}) {
-        super('image-carousel', id, config);
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    protected override onDestroy(): void {
-        this._bundled.forEach((b) => b.destroy());
-        this._userHandles.forEach((h) => h.destroy());
-        super.onDestroy();
-    }
-
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Image Carousel',
                 description: 'Cycles through 4 images on each MIDI note onset',
@@ -109,14 +102,18 @@ class ImageCarouselElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const props = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const props = this.runtime.props;
         if (!props.visible) return [];
 
         if (!props.midiTrackId) {
-            return [new Text(0, 0, 'Select a MIDI track', '14px Inter, sans-serif', {
-                color: '#94a3b8', align: 'left', baseline: 'top',
-            })];
+            return [
+                new Text(0, 0, 'Select a MIDI track', '14px Inter, sans-serif', {
+                    color: '#94a3b8',
+                    align: 'left',
+                    baseline: 'top',
+                }),
+            ];
         }
 
         const animation = props.animation as string;
@@ -125,7 +122,7 @@ class ImageCarouselElement extends CallbackElementRenderer {
         const EPS = 1e-3;
         const lookahead = animation === 'flipy' || animation === 'flipx' ? FLIP_PRE + EPS : EPS;
 
-        const notesResult = this.context.timeline?.selectNotes({
+        const notesResult = this.runtime.context.timeline?.selectNotes({
             trackIds: [props.midiTrackId],
             startSeconds: 0,
             endSeconds: targetTime + lookahead,
@@ -149,9 +146,7 @@ class ImageCarouselElement extends CallbackElementRenderer {
             props.image4 as string | null,
         ];
 
-        const resources = userSrcs.map((src, i) =>
-            src ? this._userHandles[i].update(src) : this._bundled[i].get()
-        );
+        const resources = userSrcs.map((src, i) => (src ? this._userHandles[i].update(src) : this._bundled[i].get()));
 
         const { resource, status } = resources[imageIndex];
         const w = props.imageWidth as number;
@@ -170,5 +165,26 @@ class ImageCarouselElement extends CallbackElementRenderer {
     }
 }
 
-export const imageCarousel = defineRendererElement({ type: 'image-carousel' }, ImageCarouselElement);
+const imageCarouselSchema = ImageCarouselElement.getConfigSchema();
+
+export const imageCarousel = definePluginElement({
+    type: 'image-carousel',
+    metadata: {
+        name: imageCarouselSchema.name,
+        description: imageCarouselSchema.description,
+        category: imageCarouselSchema.category,
+    },
+    schema: imageCarouselSchema,
+    create(props, context) {
+        const renderer = new ImageCarouselElement(props, context);
+        return renderer;
+    },
+    render(props, renderer, time) {
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
+    },
+    dispose(renderer) {
+        renderer.runtime.dispose();
+    },
+});
 export default imageCarousel;

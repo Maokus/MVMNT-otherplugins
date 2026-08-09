@@ -2,7 +2,8 @@
 // Shared hit-effects and note-animation helpers for piano roll elements.
 // Used by vidilike-piano-roll and circular-piano-roll.
 
-import { Arc, BezierPath, Line, Poly, remap, Text, type RenderObject } from './sdk-compat';
+import { remap } from '@mvmnt-app/plugin-sdk';
+import { Arc, BezierPath, Line, Poly, Text, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 
 import * as anim from '@mvmnt-app/plugin-sdk/animation';
 
@@ -145,7 +146,9 @@ export function drawHeartMarker(
 ): RenderObject[] {
     const fontSize = Math.max(10, Math.round(size * scale));
     const t = new Text(cx, cy, '❤', `bold ${fontSize}px sans-serif`, {
-        color: withAlpha(color, alpha), align: 'center', baseline: 'middle',
+        color: withAlpha(color, alpha),
+        align: 'center',
+        baseline: 'middle',
     });
     t.setLayoutParticipation('exclude');
     return [t];
@@ -162,7 +165,9 @@ export function drawTextMarker(
 ): RenderObject[] {
     const fontSize = Math.max(10, Math.round(size * 0.8 * scale));
     const t = new Text(cx, cy, label, `bold ${fontSize}px sans-serif`, {
-        color: withAlpha(color, alpha), align: 'center', baseline: 'middle',
+        color: withAlpha(color, alpha),
+        align: 'center',
+        baseline: 'middle',
     });
     t.setLayoutParticipation('exclude');
     return [t];
@@ -280,13 +285,10 @@ export function drawLineBurstRipple(
         const angle = (i / numRays) * Math.PI * 2;
         const cos = Math.cos(angle);
         const sin = Math.sin(angle);
-        const line = new Line(
-            cx + cos * inner,
-            cy + sin * inner,
-            cx + cos * outer,
-            cy + sin * outer,
-            { color: rayColor, lineWidth: strokeWidth }
-        );
+        const line = new Line(cx + cos * inner, cy + sin * inner, cx + cos * outer, cy + sin * outer, {
+            color: rayColor,
+            lineWidth: strokeWidth,
+        });
         line.setLayoutParticipation('exclude');
         out.push(line);
     }

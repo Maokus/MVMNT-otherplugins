@@ -1,41 +1,32 @@
 // @ts-nocheck
-import { definePluginElement } from './sdk-compat';
-import {
-    CallbackElementRenderer,
-    parseFontSelection,
-    ensureFontLoaded,
-    prop,
-    insertElementConfig,
-    tab,
-} from './sdk-compat';
+import { definePluginElement, parseFontSelection, ensureFontLoaded, prop, tab } from '@mvmnt-app/plugin-sdk';
 
 import { VisualMedia, Text, Rectangle, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 
-import type { EnhancedConfigSchema } from './sdk-compat';
+import {
+    ElementRuntime,
+    insertElementConfig,
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 
 const ANIM_DURATION_MS = 100;
 const JUMP_OFFSET_PX = 20;
 const BUMP_SCALE_ADD = 0.15;
 
-class PopcatMidiDisplayElement extends CallbackElementRenderer {
+class PopcatMidiDisplayElement {
+    readonly runtime = new ElementRuntime();
     // Bundled defaults
-    private readonly _popcat1 = this.bundledSprite('popcat1.png');
-    private readonly _popcat2 = this.bundledSprite('popcat2.png');
+    private readonly _popcat1 = this.runtime.bundledSprite('popcat1.png');
+    private readonly _popcat2 = this.runtime.bundledSprite('popcat2.png');
 
     // User-override handles (idle = popcat2 / closed mouth, active = popcat1 / open mouth)
-    private readonly _idleHandle = this.visualHandle();
-    private readonly _activeHandle = this.visualHandle();
+    private readonly _idleHandle = this.runtime.visualHandle();
+    private readonly _activeHandle = this.runtime.visualHandle();
 
-    constructor(id: string = 'popcat-midi-display', config: Record<string, unknown> = {}) {
-        super('popcat-midi-display', id, config);
-    }
-
-    protected override onDestroy(): void {
-        this._popcat1.destroy();
-        this._popcat2.destroy();
-        this._idleHandle.destroy();
-        this._activeHandle.destroy();
-        super.onDestroy();
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
     private _applyAnimation(
@@ -58,9 +49,9 @@ class PopcatMidiDisplayElement extends CallbackElementRenderer {
         return { x: 0, y: 0, w: baseWidth, h: baseHeight };
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Popcat Midi Display',
                 description: 'Displays popcat reacting to MIDI notes',
@@ -183,22 +174,30 @@ class PopcatMidiDisplayElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const props = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const props = this.runtime.props;
 
         if (!props.visible) return [];
 
         if (!props.midiTrackId) {
-            return [new Text(0, 0, 'Select a MIDI track', '14px Inter, sans-serif', {
-                color: '#94a3b8', align: 'left', baseline: 'top',
-            })];
+            return [
+                new Text(0, 0, 'Select a MIDI track', '14px Inter, sans-serif', {
+                    color: '#94a3b8',
+                    align: 'left',
+                    baseline: 'top',
+                }),
+            ];
         }
 
-        const timeline = this.context.timeline;
+        const timeline = this.runtime.context.timeline;
         if (!timeline) {
-            return [new Text(0, 0, 'Timeline API unavailable', '12px Inter, sans-serif', {
-                color: '#64748b', align: 'left', baseline: 'top',
-            })];
+            return [
+                new Text(0, 0, 'Timeline API unavailable', '12px Inter, sans-serif', {
+                    color: '#64748b',
+                    align: 'left',
+                    baseline: 'top',
+                }),
+            ];
         }
 
         const manyCats = props.manyCats as boolean;
@@ -261,9 +260,13 @@ class PopcatMidiDisplayElement extends CallbackElementRenderer {
             const catsToShow = allPitches.slice(offset, offset + totalCats);
 
             if (catsToShow.length === 0) {
-                return [new Text(0, 0, 'No notes in range', '12px Inter, sans-serif', {
-                    color: '#64748b', align: 'left', baseline: 'top',
-                })];
+                return [
+                    new Text(0, 0, 'No notes in range', '12px Inter, sans-serif', {
+                        color: '#64748b',
+                        align: 'left',
+                        baseline: 'top',
+                    }),
+                ];
             }
 
             // Distribute cats evenly across rows, bottom rows get extras
@@ -341,12 +344,16 @@ class PopcatMidiDisplayElement extends CallbackElementRenderer {
                     objects.push(makeVisualMedia(imgX, imgY, aw, ah, isActive));
 
                     if (noteLabels && labelFontString) {
-                        const noteName = this.context.midi?.noteName(pitch) ?? String(pitch);
+                        const noteName = this.runtime.context.midi?.noteName(pitch) ?? String(pitch);
                         const labelX = slotCenterX;
                         const labelY = rowCenterY + baseHeight / 2 + 4;
-                        objects.push(new Text(labelX, labelY, noteName, labelFontString, {
-                            color: '#94a3b8', align: 'center', baseline: 'top',
-                        }));
+                        objects.push(
+                            new Text(labelX, labelY, noteName, labelFontString, {
+                                color: '#94a3b8',
+                                align: 'center',
+                                baseline: 'top',
+                            })
+                        );
                     }
                 }
             }
@@ -359,10 +366,10 @@ class PopcatMidiDisplayElement extends CallbackElementRenderer {
             // Query a wider window to catch notes that are currently playing
             const lookbackWindow = 10; // seconds — look back up to 10s for long note durations
             const selected = timeline.selectNotes({
-                    trackIds: [props.midiTrackId],
-                    startSeconds: targetTime - lookbackWindow,
-                    endSeconds: targetTime + 0.1,
-                });
+                trackIds: [props.midiTrackId],
+                startSeconds: targetTime - lookbackWindow,
+                endSeconds: targetTime + 0.1,
+            });
             let activeNotes = (selected.ok ? selected.value : []).filter(
                 (n) => n.startSeconds <= targetTime && targetTime < n.endSeconds
             );
@@ -400,16 +407,15 @@ export const popcatMidiDisplay = definePluginElement({
     metadata: { name: 'Popcat MIDI Display', description: 'A MIDI-reactive Popcat', category: 'us.maok.midipack1' },
     schema: PopcatMidiDisplayElement.getConfigSchema(),
     create(props, context) {
-        const renderer = new PopcatMidiDisplayElement('popcat-midi-display', { ...props });
-        renderer.__attach(context, props);
+        const renderer = new PopcatMidiDisplayElement(props, context);
         return renderer;
     },
     render(props, renderer, time) {
-        renderer.__update(props);
-        return renderer._buildRenderObjects({}, time.seconds);
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
     },
     dispose(renderer) {
-        renderer.__dispose();
+        renderer.runtime.dispose();
     },
 });
 export default popcatMidiDisplay;

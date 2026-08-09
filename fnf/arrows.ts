@@ -1,16 +1,15 @@
 // @ts-nocheck
-import {
-    definePluginElement,
-    CallbackElementRenderer,
-    prop,
-    insertElementConfig,
-    tab,
-    type MidiNoteEvent,
-    type VisualResource,
-    type ResourceStatus,
-} from './sdk-compat';
+import { definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
 import { VisualMedia, Rectangle, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from './sdk-compat';
+import type { MidiNoteEvent } from '@mvmnt-app/plugin-sdk/timeline';
+import type { ResourceStatus, VisualResource } from '@mvmnt-app/plugin-sdk/visual-assets';
+import {
+    ElementRuntime,
+    insertElementConfig,
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 
 // MIDI note % 4 → lane: 0=LEFT(purple), 1=DOWN(blue), 2=UP(green), 3=RIGHT(red)
 const LANE_DIRS = ['Left', 'Down', 'Up', 'Right'] as const;
@@ -41,15 +40,16 @@ const HOLD_COVER_FRAME_H = 400;
 // notes.xml frames have no offset (frameX/Y = 0), so frame == texture size
 const NOTE_FRAME_W = 157;
 
-class ArrowsElement extends CallbackElementRenderer {
-    private readonly _strumlineAtlas = this.bundledSparrow('noteStrumline.png', 'noteStrumline.xml');
-    private readonly _notesAtlas = this.bundledSparrow('notes.png', 'notes.xml');
-    private readonly _splashAtlas = this.bundledSparrow('noteSplashes.png', 'noteSplashes.xml');
+class ArrowsElement {
+    readonly runtime = new ElementRuntime();
+    private readonly _strumlineAtlas = this.runtime.bundledSparrow('noteStrumline.png', 'noteStrumline.xml');
+    private readonly _notesAtlas = this.runtime.bundledSparrow('notes.png', 'notes.xml');
+    private readonly _splashAtlas = this.runtime.bundledSparrow('noteSplashes.png', 'noteSplashes.xml');
 
     // Hold tail atlas: 8 frames in a single row.
     // Frame layout (left→right): left body, left cap, down body, down cap, up body, up cap, right body, right cap.
     // All caps face upward.
-    private readonly _holdAtlas = this.bundledGridAtlas('NOTE_hold_assets.png', {
+    private readonly _holdAtlas = this.runtime.bundledGridAtlas('NOTE_hold_assets.png', {
         columns: 8,
         rows: 1,
         frameDurationMs: 1000,
@@ -57,10 +57,10 @@ class ArrowsElement extends CallbackElementRenderer {
 
     // Hold cover atlases: index matches lane (0=Purple/Left … 3=Red/Right)
     private readonly _holdCoverAtlases = [
-        this.bundledSparrow('holdCoverPurple.png', 'holdCoverPurple.xml'),
-        this.bundledSparrow('holdCoverBlue.png', 'holdCoverBlue.xml'),
-        this.bundledSparrow('holdCoverGreen.png', 'holdCoverGreen.xml'),
-        this.bundledSparrow('holdCoverRed.png', 'holdCoverRed.xml'),
+        this.runtime.bundledSparrow('holdCoverPurple.png', 'holdCoverPurple.xml'),
+        this.runtime.bundledSparrow('holdCoverBlue.png', 'holdCoverBlue.xml'),
+        this.runtime.bundledSparrow('holdCoverGreen.png', 'holdCoverGreen.xml'),
+        this.runtime.bundledSparrow('holdCoverRed.png', 'holdCoverRed.xml'),
     ];
 
     private readonly _layoutRect = new Rectangle(0, 0, 680, 600, { fillColor: '#00000000' });
@@ -89,13 +89,13 @@ class ArrowsElement extends CallbackElementRenderer {
         new VisualMedia(0, 0, 0, 0).setLayoutParticipation('exclude')
     );
 
-    constructor(id: string = 'arrows', config: Record<string, unknown> = {}) {
-        super('arrows', id, config);
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Arrows',
                 description: 'FNF-style arrow strumline with falling notes',
@@ -138,8 +138,8 @@ class ArrowsElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const props = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const props = this.runtime.props;
         if (!props.visible) return [];
 
         const laneSize = props.laneSize as number;
@@ -175,13 +175,12 @@ class ArrowsElement extends CallbackElementRenderer {
         const laneHeld: (MidiNoteEvent | null)[] = [null, null, null, null];
         const laneSplash: ({ note: MidiNoteEvent; elapsed: number } | null)[] = [null, null, null, null];
         // Approaching notes only (startTime >= targetTime), plus tailEndY for hold notes
-        const fallingNotes: Array<{ note: MidiNoteEvent; lane: number; headY: number; tailEndY: number | null }> =
-            [];
+        const fallingNotes: Array<{ note: MidiNoteEvent; lane: number; headY: number; tailEndY: number | null }> = [];
 
         const trackId = props.midiTrackId as string | null;
 
-        if (trackId && this.context.timeline) {
-            const selected = this.context.timeline.selectNotes({
+        if (trackId && this.runtime.context.timeline) {
+            const selected = this.runtime.context.timeline.selectNotes({
                 trackIds: [trackId],
                 startSeconds: targetTime - lookBackSec,
                 endSeconds: targetTime + lookAheadSec,
@@ -210,7 +209,9 @@ class ArrowsElement extends CallbackElementRenderer {
                     const headY = _noteY(n.startSeconds, targetTime, hitY, scrollSpeed, downscroll);
                     if (headY > -laneSize && headY < H + laneSize) {
                         const isHold = n.endSeconds - n.startSeconds > shortNoteThreshold;
-                        const tailEndY = isHold ? _noteY(n.endSeconds, targetTime, hitY, scrollSpeed, downscroll) : null;
+                        const tailEndY = isHold
+                            ? _noteY(n.endSeconds, targetTime, hitY, scrollSpeed, downscroll)
+                            : null;
                         fallingNotes.push({ note: n, lane, headY, tailEndY });
                     }
                 }
@@ -481,16 +482,15 @@ export const arrows = definePluginElement({
     metadata: { name: 'Arrows', description: 'FNF-style arrow strumline with falling notes', category: 'us.maok.fnf' },
     schema: ArrowsElement.getConfigSchema(),
     create(props, context) {
-        const renderer = new ArrowsElement('arrows', { ...props });
-        renderer.__attach(context, props);
+        const renderer = new ArrowsElement(props, context);
         return renderer;
     },
     render(props, renderer, time) {
-        renderer.__update(props);
-        return renderer._buildRenderObjects({}, time.seconds);
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
     },
     dispose(renderer) {
-        renderer.__dispose();
+        renderer.runtime.dispose();
     },
 });
 export default arrows;

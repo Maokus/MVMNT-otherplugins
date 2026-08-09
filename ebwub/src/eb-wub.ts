@@ -1,17 +1,15 @@
-import { defineRendererElement } from './sdk-compat';
+import { definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
 // Audio-reactive GIF frame controller. The selected frame is calculated solely
 // from the requested timeline time, so scrubbing and export are deterministic.
+import { Rectangle, VisualMedia, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
+import type { VisualResource } from '@mvmnt-app/plugin-sdk/visual-assets';
 import {
-    CallbackElementRenderer,
-    prop,
+    ElementRuntime,
     insertElementConfig,
-    tab,
-    Rectangle,
-    type RenderObject,
-    type VisualResource,
-} from './sdk-compat';
-import { VisualMedia } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from './sdk-compat';
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 
 function frameStartTime(resource: VisualResource | null, normalizedVolume: number): number {
     const frames = resource?.frames ?? [];
@@ -28,19 +26,22 @@ function frameStartTime(resource: VisualResource | null, normalizedVolume: numbe
     return milliseconds / 1000;
 }
 
-class EbWubElement extends CallbackElementRenderer {
-    private readonly _bundledGif = this.bundledSprite('eb_wub.gif');
-    private readonly _selectedAsset = this.visualHandle();
+class EbWubElement {
+    readonly runtime = new ElementRuntime();
+    private readonly _bundledGif = this.runtime.bundledSprite('eb_wub.gif');
+    private readonly _selectedAsset = this.runtime.visualHandle();
     private readonly _media = new VisualMedia(0, 0, 320, 320, { layoutParticipation: 'exclude' });
-    private readonly _layoutRect = new Rectangle(0, 0, 320, 320, { fillColor: '#00000000' }).setLayoutParticipation('include');
+    private readonly _layoutRect = new Rectangle(0, 0, 320, 320, { fillColor: '#00000000' }).setLayoutParticipation(
+        'include'
+    );
 
-    constructor(id: string = 'eb-wub', config: Record<string, unknown> = {}) {
-        super('eb-wub', id, config);
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'EB Wub GIF',
                 description: 'Selects a GIF frame from the volume of an audio track.',
@@ -54,7 +55,8 @@ class EbWubElement extends CallbackElementRenderer {
                         collapsed: false,
                         properties: [
                             prop.imageAsset('imageSource', 'Custom GIF', {
-                                description: 'Choose an image or GIF from the Asset Manager. Leave empty to use EB Wub.',
+                                description:
+                                    'Choose an image or GIF from the Asset Manager. Leave empty to use EB Wub.',
                             }),
                             prop.audioTrack('audioTrackId', 'Audio Track', {
                                 description: 'The track whose volume selects the GIF frame.',
@@ -89,7 +91,8 @@ class EbWubElement extends CallbackElementRenderer {
                                 min: 0.001,
                                 max: 1,
                                 step: 0.001,
-                                description: 'RMS volume that selects the final GIF frame. Louder audio remains on that frame.',
+                                description:
+                                    'RMS volume that selects the final GIF frame. Louder audio remains on that frame.',
                             }),
                             prop.number('smoothing', 'Smoothing', 4, {
                                 min: 0,
@@ -104,8 +107,8 @@ class EbWubElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const props = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const props = this.runtime.props;
         if (!props.visible) return [];
 
         const width = props.width as number;
@@ -114,14 +117,12 @@ class EbWubElement extends CallbackElementRenderer {
         this._layoutRect.height = height;
 
         const sourceId = props.imageSource as string | null;
-        const { resource, status } = sourceId
-            ? this._selectedAsset.update(sourceId)
-            : this._bundledGif.get();
+        const { resource, status } = sourceId ? this._selectedAsset.update(sourceId) : this._bundledGif.get();
         const trackId = props.audioTrackId as string | null;
         const smoothing = props.smoothing as number;
         const windowSec = Math.max(0.025, smoothing * 0.01);
         const rmsResult = trackId
-            ? this.context.audio?.getRms({
+            ? this.runtime.context.audio?.getRms({
                   trackId,
                   startSeconds: targetTime - windowSec / 2,
                   endSeconds: targetTime + windowSec / 2,
@@ -143,5 +144,22 @@ class EbWubElement extends CallbackElementRenderer {
     }
 }
 
-export const ebWub = defineRendererElement({ type: 'eb-wub' }, EbWubElement);
+const ebWubSchema = EbWubElement.getConfigSchema();
+
+export const ebWub = definePluginElement({
+    type: 'eb-wub',
+    metadata: { name: ebWubSchema.name, description: ebWubSchema.description, category: ebWubSchema.category },
+    schema: ebWubSchema,
+    create(props, context) {
+        const renderer = new EbWubElement(props, context);
+        return renderer;
+    },
+    render(props, renderer, time) {
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
+    },
+    dispose(renderer) {
+        renderer.runtime.dispose();
+    },
+});
 export default ebWub;

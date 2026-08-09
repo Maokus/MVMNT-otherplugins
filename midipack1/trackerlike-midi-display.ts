@@ -1,23 +1,23 @@
 // @ts-nocheck
-import { definePluginElement } from './sdk-compat';
+import { definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
+import { Text, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import {
-    CallbackElementRenderer,
-    Text,
-    prop,
+    ElementRuntime,
     insertElementConfig,
-    tab,
-    type RenderObject,
-} from './sdk-compat';
-import type { EnhancedConfigSchema } from './sdk-compat';
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 
-class TrackerlikeMidiDisplayElement extends CallbackElementRenderer {
-    constructor(id: string = 'trackerlike-midi-display', config: Record<string, unknown> = {}) {
-        super('trackerlike-midi-display', id, config);
+class TrackerlikeMidiDisplayElement {
+    readonly runtime = new ElementRuntime();
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Trackerlike Midi Display',
                 description: 'A tracker-style MIDI display showing notes per beat in monospace text',
@@ -73,26 +73,34 @@ class TrackerlikeMidiDisplayElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const props = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const props = this.runtime.props;
 
         if (!props.visible) return [];
 
         const objects: RenderObject[] = [];
 
         if (!props.midiTrackId) {
-            objects.push(new Text(0, 0, 'Select a MIDI track', '14px monospace', {
-                color: '#94a3b8', align: 'left', baseline: 'top',
-            }));
+            objects.push(
+                new Text(0, 0, 'Select a MIDI track', '14px monospace', {
+                    color: '#94a3b8',
+                    align: 'left',
+                    baseline: 'top',
+                })
+            );
             return objects;
         }
 
-        const timeline = this.context.timeline;
-        const timing = this.context.timing;
+        const timeline = this.runtime.context.timeline;
+        const timing = this.runtime.context.timing;
         if (!timeline || !timing) {
-            objects.push(new Text(0, 0, 'Timeline API unavailable', '12px monospace', {
-                color: '#64748b', align: 'left', baseline: 'top',
-            }));
+            objects.push(
+                new Text(0, 0, 'Timeline API unavailable', '12px monospace', {
+                    color: '#64748b',
+                    align: 'left',
+                    baseline: 'top',
+                })
+            );
             return objects;
         }
 
@@ -118,9 +126,13 @@ class TrackerlikeMidiDisplayElement extends CallbackElementRenderer {
         if (props.showTrackName) {
             const track = timeline.getTrack(props.midiTrackId);
             const trackLabel = track.ok ? track.value.name : '?';
-            objects.push(new Text(0, 0, ` T> ${trackLabel}`, font, {
-                color: props.headerColor, align: 'left', baseline: 'top',
-            }));
+            objects.push(
+                new Text(0, 0, ` T> ${trackLabel}`, font, {
+                    color: props.headerColor,
+                    align: 'left',
+                    baseline: 'top',
+                })
+            );
             yOffset = lineHeight;
         }
 
@@ -148,7 +160,7 @@ class TrackerlikeMidiDisplayElement extends CallbackElementRenderer {
             // Build note columns: each is 4 chars wide ("C3  ", "C#3 ", "-- ")
             const noteCells = Array.from({ length: columns }, (_, col) => {
                 const note = starting[col];
-                return note ? (this.context.midi?.noteName(note.note) ?? String(note.note)).padEnd(4) : '--  ';
+                return note ? (this.runtime.context.midi?.noteName(note.note) ?? String(note.note)).padEnd(4) : '--  ';
             });
 
             const cursor = isActive ? '>' : ' ';
@@ -166,19 +178,22 @@ class TrackerlikeMidiDisplayElement extends CallbackElementRenderer {
 
 export const trackerlikeMidiDisplay = definePluginElement({
     type: 'trackerlike-midi-display',
-    metadata: { name: 'Trackerlike MIDI Display', description: 'A tracker-style MIDI note display', category: 'us.maok.midipack1' },
+    metadata: {
+        name: 'Trackerlike MIDI Display',
+        description: 'A tracker-style MIDI note display',
+        category: 'us.maok.midipack1',
+    },
     schema: TrackerlikeMidiDisplayElement.getConfigSchema(),
     create(props, context) {
-        const renderer = new TrackerlikeMidiDisplayElement('trackerlike-midi-display', { ...props });
-        renderer.__attach(context, props);
+        const renderer = new TrackerlikeMidiDisplayElement(props, context);
         return renderer;
     },
     render(props, renderer, time) {
-        renderer.__update(props);
-        return renderer._buildRenderObjects({}, time.seconds);
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
     },
     dispose(renderer) {
-        renderer.__dispose();
+        renderer.runtime.dispose();
     },
 });
 export default trackerlikeMidiDisplay;

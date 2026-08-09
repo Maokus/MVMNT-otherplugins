@@ -1,21 +1,19 @@
-import { defineRendererElement } from './sdk-compat';
-import {
-    CallbackElementRenderer,
-    prop,
-    insertElementConfig,
-    tab,
-    VisualMediaPlayback,
-
-
-} from './sdk-compat';
+import { PluginContractError, definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
 import { VisualMedia, EmptyRenderObject, Rectangle, Text, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
+import { VisualMediaPlayback } from '@mvmnt-app/plugin-sdk/visual-assets';
 import type {
     BundledSprite,
     ResourceHandleResult,
-    EnhancedConfigSchema,
     VisualResource,
     ResourceStatus,
-} from './sdk-compat';
+} from '@mvmnt-app/plugin-sdk/visual-assets';
+import {
+    ElementRuntime,
+    insertElementConfig,
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 
 const BASE_SIZE = 600;
 
@@ -35,35 +33,36 @@ interface Part {
     status?: ResourceStatus;
 }
 
-class BoinkerElement extends CallbackElementRenderer {
+class BoinkerElement {
+    readonly runtime = new ElementRuntime();
     private readonly _parts: { [index: string]: Part } = {
         body: {
-            handle: this.bundledImage('Body.png'),
+            handle: this.runtime.bundledImage('Body.png'),
             renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutParticipation: 'exclude' }),
             defaultTransforms: { x: 310, y: 270 },
         },
         head: {
-            handle: this.bundledImage('Head.png'),
+            handle: this.runtime.bundledImage('Head.png'),
             renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutParticipation: 'exclude' }),
             defaultTransforms: { x: 300, y: 100 },
         },
         armL: {
-            handle: this.bundledImage('ArmL.png'),
+            handle: this.runtime.bundledImage('ArmL.png'),
             renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutParticipation: 'exclude' }),
             defaultTransforms: { x: 120, y: 340 },
         },
         armR: {
-            handle: this.bundledImage('ArmR.png'),
+            handle: this.runtime.bundledImage('ArmR.png'),
             renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutParticipation: 'exclude' }),
             defaultTransforms: { x: 480, y: 320 },
         },
         legL: {
-            handle: this.bundledImage('LegL.png'),
+            handle: this.runtime.bundledImage('LegL.png'),
             renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutParticipation: 'exclude' }),
             defaultTransforms: { x: 220, y: 600, pivotX: 0.5, pivotY: 1 },
         },
         legR: {
-            handle: this.bundledImage('LegR.png'),
+            handle: this.runtime.bundledImage('LegR.png'),
             renderObject: new VisualMedia(0, 0, BASE_SIZE, BASE_SIZE, { layoutParticipation: 'exclude' }),
             defaultTransforms: { x: 440, y: 600, pivotX: 0.5, pivotY: 1 },
         },
@@ -73,23 +72,16 @@ class BoinkerElement extends CallbackElementRenderer {
     private readonly _container = new EmptyRenderObject(0, 0, 1, 1, 1);
     private readonly _layoutRect = new Rectangle(0, 0, BASE_SIZE, BASE_SIZE, { fillColor: null });
 
-    constructor(id: string = 'boinker', config: Record<string, unknown> = {}) {
-        super('boinker', id, config);
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
         for (const partKey in this._parts) {
             this._container.addChild(this._parts[partKey].renderObject);
         }
     }
 
-    protected override onDestroy(): void {
-        for (const partKey in this._parts) {
-            this._parts[partKey].handle.destroy();
-        }
-        super.onDestroy();
-    }
-
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Boinker',
                 description: 'A character that bounces in time with the music',
@@ -117,14 +109,18 @@ class BoinkerElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const props = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const props = this.runtime.props;
         if (!props.visible) return [];
 
         if (!props.audioTrackId) {
-            return [new Text(0, 0, 'Select an audio track', '14px Inter, sans-serif', {
-                color: '#94a3b8', align: 'left', baseline: 'top',
-            })];
+            return [
+                new Text(0, 0, 'Select an audio track', '14px Inter, sans-serif', {
+                    color: '#94a3b8',
+                    align: 'left',
+                    baseline: 'top',
+                }),
+            ];
         }
 
         // Prepare resources and media objects
@@ -153,14 +149,18 @@ class BoinkerElement extends CallbackElementRenderer {
         }
 
         const sampled = props.audioTrackId
-            ? this.context.audio?.sampleFeature({ trackId: props.audioTrackId as string, feature: 'rms', timeSeconds: targetTime })
+            ? this.runtime.context.audio?.sampleFeature({
+                  trackId: props.audioTrackId as string,
+                  feature: 'rms',
+                  timeSeconds: targetTime,
+              })
             : null;
         const sensitivity = (props.sensitivity as number) ?? 2.5;
         const value = sampled?.ok ? sampled.value.value : 0;
-        const rms = Math.min(1, (Array.isArray(value) ? value[0] ?? 0 : Number(value) || 0) * sensitivity);
+        const rms = Math.min(1, (Array.isArray(value) ? (value[0] ?? 0) : Number(value) || 0) * sensitivity);
 
         // Head bump: smooth arch up and back down once per beat
-        const beatPhase = this.secondsToBeats(targetTime) % 1;
+        const beatPhase = this.runtime.secondsToBeats(targetTime) % 1;
         const headBump = Math.sin(beatPhase * Math.PI); // 0 → peak → 0 over one beat
         const headBumpPixels = 25 * ((props.size as number) ?? 1);
         this._parts.head.renderObject.y = (this._parts.head.defaultTransforms.y ?? 0) - headBump * headBumpPixels;
@@ -180,5 +180,30 @@ class BoinkerElement extends CallbackElementRenderer {
     }
 }
 
-export const boinker = defineRendererElement({ type: 'boinker', featureRequirements: [{ feature: 'rms' }], }, BoinkerElement);
+const boinkerSchema = BoinkerElement.getConfigSchema();
+
+export const boinker = definePluginElement({
+    type: 'boinker',
+    metadata: { name: boinkerSchema.name, description: boinkerSchema.description, category: boinkerSchema.category },
+    schema: boinkerSchema,
+    load(context) {
+        const required = context.audio?.requireFeatures([{ feature: 'rms' }]);
+        if (!required?.ok) {
+            throw new PluginContractError(
+                required?.error.message ?? 'audio.features.read is required for feature requirements'
+            );
+        }
+    },
+    create(props, context) {
+        const renderer = new BoinkerElement(props, context);
+        return renderer;
+    },
+    render(props, renderer, time) {
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
+    },
+    dispose(renderer) {
+        renderer.runtime.dispose();
+    },
+});
 export default boinker;

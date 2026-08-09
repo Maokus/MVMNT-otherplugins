@@ -1,16 +1,13 @@
+import { PluginContractError, definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
+import type { PluginAudioCalculator } from '@mvmnt-app/plugin-sdk/audio';
+import { Line, Poly, Rectangle, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import {
-    defineRendererElement,
-    CallbackElementRenderer,
-    prop,
+    ElementRuntime,
     insertElementConfig,
-    tab,
-    Rectangle,
-    Poly,
-    Line,
-    type PluginAudioCalculator,
-    type RenderObject,
-} from './sdk-compat';
-import type { EnhancedConfigSchema } from './sdk-compat';
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 
 const TRANSIENT_FEATURE = 'audiopack1.transients';
 const TRANSIENT_CALCULATOR_ID = 'us.maok.audiopack1.transients';
@@ -57,8 +54,8 @@ const transientCalculator: PluginAudioCalculator = {
         }
 
         const values = new Float32Array(frameCount);
-        const rollingWindow = Math.max(4, Math.round(0.35 * sampleRate / hopSize));
-        const refractoryFrames = Math.max(1, Math.round(MIN_TRANSIENT_GAP_SECONDS * sampleRate / hopSize));
+        const rollingWindow = Math.max(4, Math.round((0.35 * sampleRate) / hopSize));
+        const refractoryFrames = Math.max(1, Math.round((MIN_TRANSIENT_GAP_SECONDS * sampleRate) / hopSize));
         let lastTransientFrame = -refractoryFrames;
         for (let frame = 0; frame < frameCount; frame += 1) {
             const flux = Math.max(0, (rms[frame] ?? 0) - (rms[frame - 1] ?? 0));
@@ -136,7 +133,13 @@ function extractTransientTimes(samples: TransientSample[]): number[] {
     return times;
 }
 
-function buildWaveformPoints(samples: number[], visibleDuration: number, intervalDuration: number, width: number, height: number) {
+function buildWaveformPoints(
+    samples: number[],
+    visibleDuration: number,
+    intervalDuration: number,
+    width: number,
+    height: number
+) {
     if (!samples.length) return [];
     const midpoint = height / 2;
     const scale = height / 2;
@@ -160,12 +163,7 @@ function buildWaveformPoints(samples: number[], visibleDuration: number, interva
     return points;
 }
 
-function getFallbackWindow(
-    targetTime: number,
-    fallback: unknown,
-    beatsPerBar: number,
-    timing: TimingApi
-) {
+function getFallbackWindow(targetTime: number, fallback: unknown, beatsPerBar: number, timing: TimingApi) {
     const targetTick = timing.secondsToTicks(targetTime);
     const targetBeat = targetTick === null ? targetTime * 2 : timing.ticksToBeats(targetTick);
     const spanBeats = fallback === 'bar' ? beatsPerBar : 1;
@@ -176,11 +174,7 @@ function getFallbackWindow(
     return { start, end: Math.max(start + 0.001, end) };
 }
 
-function getMinimumIntervalSeconds(
-    startTime: number,
-    beatsPerBar: number,
-    timing: TimingApi
-) {
+function getMinimumIntervalSeconds(startTime: number, beatsPerBar: number, timing: TimingApi) {
     const startTick = timing.secondsToTicks(startTime);
     if (startTick === null) return 0.03125;
     const startBeat = timing.ticksToBeats(startTick);
@@ -188,17 +182,18 @@ function getMinimumIntervalSeconds(
     return Math.max(0.001, (timing.ticksToSeconds(endTick) ?? startTime + 0.03125) - startTime);
 }
 
-class TransientDisplayElement extends CallbackElementRenderer {
+class TransientDisplayElement {
+    readonly runtime = new ElementRuntime();
     static readonly elementType = 'transient-display' as const;
     private transientScanCache: TransientScanCache | null = null;
 
-    constructor(id: string = 'transient-display', config: Record<string, unknown> = {}) {
-        super('transient-display', id, config);
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Transient Display',
                 description: 'A waveform that fills one transient interval at a time.',
@@ -210,7 +205,9 @@ class TransientDisplayElement extends CallbackElementRenderer {
                         id: 'audioSource',
                         label: 'Audio Source',
                         collapsed: false,
-                        properties: [prop.audioTrack('audioTrackId', 'Audio Track', { description: 'Audio track to analyze' })],
+                        properties: [
+                            prop.audioTrack('audioTrackId', 'Audio Track', { description: 'Audio track to analyze' }),
+                        ],
                     },
                     {
                         id: 'waveform',
@@ -231,7 +228,8 @@ class TransientDisplayElement extends CallbackElementRenderer {
                                 { label: 'One Bar', value: 'bar' },
                             ]),
                             prop.boolean('overwrite', 'Overwrite', false, {
-                                description: 'Draw a new transient over the existing trace instead of clearing it immediately.',
+                                description:
+                                    'Draw a new transient over the existing trace instead of clearing it immediately.',
                             }),
                             prop.boolean('showPlayhead', 'Show Playhead', true),
                         ],
@@ -253,33 +251,33 @@ class TransientDisplayElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const props = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const props = this.runtime.props;
         if (!props.visible) return [];
 
         const width = Math.max(1, Number(props.width) || 800);
         const height = Math.max(1, Number(props.height) || 240);
         const anchor = new Rectangle(0, 0, width, height, { fillColor: '#00000000' });
-        const timingFacet = this.context.timing;
+        const timingFacet = this.runtime.context.timing;
         const timing: TimingApi | null = timingFacet
             ? {
-                secondsToTicks: (value) => {
-                    const result = timingFacet.secondsToTicks(value);
-                    return result.ok ? result.value : null;
-                },
-                ticksToSeconds: (value) => {
-                    const result = timingFacet.ticksToSeconds(value);
-                    return result.ok ? result.value : null;
-                },
-                beatsToTicks: (value) => {
-                    const result = timingFacet.beatsToTicks(value);
-                    return result.ok ? result.value : 0;
-                },
-                ticksToBeats: (value) => {
-                    const result = timingFacet.ticksToBeats(value);
-                    return result.ok ? result.value : 0;
-                },
-            }
+                  secondsToTicks: (value) => {
+                      const result = timingFacet.secondsToTicks(value);
+                      return result.ok ? result.value : null;
+                  },
+                  ticksToSeconds: (value) => {
+                      const result = timingFacet.ticksToSeconds(value);
+                      return result.ok ? result.value : null;
+                  },
+                  beatsToTicks: (value) => {
+                      const result = timingFacet.beatsToTicks(value);
+                      return result.ok ? result.value : 0;
+                  },
+                  ticksToBeats: (value) => {
+                      const result = timingFacet.ticksToBeats(value);
+                      return result.ok ? result.value : 0;
+                  },
+              }
             : null;
         const getNoAudioWindow = () => {
             if (timing) return getFallbackWindow(targetTime, 'beat', 4, timing);
@@ -301,7 +299,7 @@ class TransientDisplayElement extends CallbackElementRenderer {
         };
         if (!props.audioTrackId) return renderNoAudioLine();
 
-        const audio = this.context.audio;
+        const audio = this.runtime.context.audio;
         if (!audio || !timing) return renderNoAudioLine();
 
         const maxInterval = clamp(Number(props.maxInterval) || 4, 0.25, 16);
@@ -368,33 +366,41 @@ class TransientDisplayElement extends CallbackElementRenderer {
         const acceptedTransientTimes: number[] = [];
         for (const transientTime of transientTimes) {
             const previous = acceptedTransientTimes[acceptedTransientTimes.length - 1];
-            if (previous === undefined || transientTime - previous >= getMinimumIntervalSeconds(previous, beatsPerBar, timing)) {
+            if (
+                previous === undefined ||
+                transientTime - previous >= getMinimumIntervalSeconds(previous, beatsPerBar, timing)
+            ) {
                 acceptedTransientTimes.push(transientTime);
             }
         }
         const elapsedTransients = acceptedTransientTimes.filter((time) => time <= targetTime);
         const previousTransient = elapsedTransients[elapsedTransients.length - 1];
-        const priorTransient = previousTransient === undefined
-            ? undefined
-            : acceptedTransientTimes.filter((time) => time < previousTransient).slice(-1)[0];
-        const nextTransient = previousTransient === undefined
-            ? undefined
-            : acceptedTransientTimes.find((time) => time > previousTransient);
+        const priorTransient =
+            previousTransient === undefined
+                ? undefined
+                : acceptedTransientTimes.filter((time) => time < previousTransient).slice(-1)[0];
+        const nextTransient =
+            previousTransient === undefined
+                ? undefined
+                : acceptedTransientTimes.find((time) => time > previousTransient);
         const fallback = getFallbackWindow(targetTime, props.fallbackLength, beatsPerBar, timing);
-        const minimumInterval = previousTransient === undefined
-            ? 0
-            : getMinimumIntervalSeconds(previousTransient, beatsPerBar, timing);
-        const segment = previousTransient !== undefined
-            ? {
-                start: previousTransient,
-                end:
-                    previousTransient +
-                    Math.max(
-                        minimumInterval,
-                        Math.min(maxInterval, (nextTransient ?? previousTransient + maxInterval) - previousTransient)
-                    ),
-            }
-            : fallback;
+        const minimumInterval =
+            previousTransient === undefined ? 0 : getMinimumIntervalSeconds(previousTransient, beatsPerBar, timing);
+        const segment =
+            previousTransient !== undefined
+                ? {
+                      start: previousTransient,
+                      end:
+                          previousTransient +
+                          Math.max(
+                              minimumInterval,
+                              Math.min(
+                                  maxInterval,
+                                  (nextTransient ?? previousTransient + maxInterval) - previousTransient
+                              )
+                          ),
+                  }
+                : fallback;
         const readPcm = (start: number, end: number) => {
             const result = audio.getRawSamples({
                 trackId,
@@ -415,7 +421,13 @@ class TransientDisplayElement extends CallbackElementRenderer {
         const activeEnd = activeStart + activeElapsed;
         const activePcm = readPcm(activeStart, activeEnd);
         if (activeEnd > activeStart && activePcm.length === 0) return renderNoAudioLine();
-        const waveformPoints = buildWaveformPoints(activePcm, activeEnd - activeStart, overwriteDuration, width, height);
+        const waveformPoints = buildWaveformPoints(
+            activePcm,
+            activeEnd - activeStart,
+            overwriteDuration,
+            width,
+            height
+        );
 
         // Overwrite mode reconstructs the retained tail from the preceding trigger each frame.
         // It deliberately does not mutate a waveform buffer, keeping seeks and exports deterministic.
@@ -466,9 +478,42 @@ class TransientDisplayElement extends CallbackElementRenderer {
     }
 }
 
-export const transientDisplay = defineRendererElement({
+const transientDisplaySchema = TransientDisplayElement.getConfigSchema();
+
+export const transientDisplay = definePluginElement({
     type: 'transient-display',
-    calculators: [transientCalculator],
-    featureRequirements: [{ feature: TRANSIENT_FEATURE, calculatorId: TRANSIENT_CALCULATOR_ID }],
-}, TransientDisplayElement);
+    metadata: {
+        name: transientDisplaySchema.name,
+        description: transientDisplaySchema.description,
+        category: transientDisplaySchema.category,
+    },
+    schema: transientDisplaySchema,
+    load(context) {
+        const registered = context.audioCalculators?.register(transientCalculator);
+        if (!registered?.ok) {
+            throw new PluginContractError(
+                registered?.error.message ?? `Unable to register calculator '${transientCalculator.id}'`
+            );
+        }
+        const required = context.audio?.requireFeatures([
+            { feature: TRANSIENT_FEATURE, calculatorId: TRANSIENT_CALCULATOR_ID },
+        ]);
+        if (!required?.ok) {
+            throw new PluginContractError(
+                required?.error.message ?? 'audio.features.read is required for feature requirements'
+            );
+        }
+    },
+    create(props, context) {
+        const renderer = new TransientDisplayElement(props, context);
+        return renderer;
+    },
+    render(props, renderer, time) {
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
+    },
+    dispose(renderer) {
+        renderer.runtime.dispose();
+    },
+});
 export default transientDisplay;

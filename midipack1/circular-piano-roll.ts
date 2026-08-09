@@ -1,22 +1,17 @@
 // @ts-nocheck
-import { definePluginElement } from './sdk-compat';
+import { definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
 // CircularPianoRoll — notes travel clockwise around a ring and "play" when they reach the trigger point.
 // Notes are rendered as arc segments on the ring; pitch can optionally map to hue.
 // Hit effects (marker, ripple, arc glow) trigger when a note's start time reaches targetTime.
 
+import { Arc, GlowLayer, Line, Rectangle, Text, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import {
-    CallbackElementRenderer,
-    prop,
+    ElementRuntime,
     insertElementConfig,
-    tab,
-    Rectangle,
-    Text,
-    Line,
-    Arc,
-    GlowLayer,
-    type RenderObject,
-} from './sdk-compat';
-import type { EnhancedConfigSchema } from './sdk-compat';
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 import { withAlpha, pushHitEffects } from './piano-roll-effects';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,14 +90,15 @@ const clockDegToRad = (deg: number) => ((deg - 90) * Math.PI) / 180;
 // Element
 // ─────────────────────────────────────────────────────────────────────────────
 
-class CircularPianoRollElement extends CallbackElementRenderer {
-    constructor(id: string = 'circular-piano-roll', config: Record<string, unknown> = {}) {
-        super('circular-piano-roll', id, config);
+class CircularPianoRollElement {
+    readonly runtime = new ElementRuntime();
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             {
                 name: 'Circular Piano Roll',
                 description: 'Notes travel around a ring and play when they reach the trigger point.',
@@ -150,7 +146,8 @@ class CircularPianoRollElement extends CallbackElementRenderer {
                             prop.number('polarNoteHeight', 'Note Height (px)', 8, {
                                 min: 1,
                                 step: 1,
-                                description: 'Radial thickness of each note. Values larger than a pitch lane may overlap adjacent lanes.',
+                                description:
+                                    'Radial thickness of each note. Values larger than a pitch lane may overlap adjacent lanes.',
                                 visibleWhen: [{ key: 'ringMode', equals: 'polar' }],
                             }),
                             prop.select('speedMode', 'Speed Mode', 'range', [
@@ -168,7 +165,8 @@ class CircularPianoRollElement extends CallbackElementRenderer {
                                 min: 1,
                                 max: 1440,
                                 step: 1,
-                                description: 'Degrees travelled per second. Higher values move notes faster and show a smaller time window.',
+                                description:
+                                    'Degrees travelled per second. Higher values move notes faster and show a smaller time window.',
                                 visibleWhen: [{ key: 'speedMode', equals: 'speed' }],
                             }),
                             prop.number('startAngle', 'Start Angle (°)', 0, { min: 0, max: 360, step: 1 }),
@@ -307,23 +305,31 @@ class CircularPianoRollElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const p = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const p = this.runtime.props;
         if (!p.visible) return [];
 
         const objects: RenderObject[] = [];
 
-        const timeline = this.context.timeline;
+        const timeline = this.runtime.context.timeline;
         if (!timeline) {
-            objects.push(new Text(0, 0, 'Timeline API unavailable', '12px sans-serif', {
-                color: '#64748b', align: 'left', baseline: 'top',
-            }));
+            objects.push(
+                new Text(0, 0, 'Timeline API unavailable', '12px sans-serif', {
+                    color: '#64748b',
+                    align: 'left',
+                    baseline: 'top',
+                })
+            );
             return objects;
         }
         if (!p.midiTrackId) {
-            objects.push(new Text(0, 0, 'Select a MIDI track', '14px sans-serif', {
-                color: '#94a3b8', align: 'left', baseline: 'top',
-            }));
+            objects.push(
+                new Text(0, 0, 'Select a MIDI track', '14px sans-serif', {
+                    color: '#94a3b8',
+                    align: 'left',
+                    baseline: 'top',
+                })
+            );
             return objects;
         }
 
@@ -379,9 +385,7 @@ class CircularPianoRollElement extends CallbackElementRenderer {
         const timeWindowBars = Math.max(1, Math.round((p.timeWindowBars as number) ?? 2));
         const rangeWindowDuration = timeWindowBars * beatsPerBar * (60 / bpm);
         const angularSpeed = Math.max(1, (p.angularSpeed as number) ?? 90);
-        const timeWindowDuration = speedMode === 'speed'
-            ? arcSpanDeg / angularSpeed
-            : rangeWindowDuration;
+        const timeWindowDuration = speedMode === 'speed' ? arcSpanDeg / angularSpeed : rangeWindowDuration;
 
         const colorMode = (p.colorMode as string) ?? 'pitch';
         const noteColor = (p.noteColor as string) ?? '#FF6B6BCC';
@@ -517,13 +521,10 @@ class CircularPianoRollElement extends CallbackElementRenderer {
                 const sin = Math.sin(triggerAngle);
                 const innerR = ringRadius - ringWidth / 2 - 4;
                 const outerR = ringRadius + ringWidth / 2 + triggerIndicatorLength;
-                const ind = new Line(
-                    cx + cos * innerR,
-                    cy + sin * innerR,
-                    cx + cos * outerR,
-                    cy + sin * outerR,
-                    { color: triggerColor, lineWidth: 2 }
-                );
+                const ind = new Line(cx + cos * innerR, cy + sin * innerR, cx + cos * outerR, cy + sin * outerR, {
+                    color: triggerColor,
+                    lineWidth: 2,
+                });
                 ind.setLayoutParticipation('exclude');
                 objects.push(ind);
             }
@@ -684,19 +685,22 @@ class CircularPianoRollElement extends CallbackElementRenderer {
 
 export const circularPianoRoll = definePluginElement({
     type: 'circular-piano-roll',
-    metadata: { name: 'Circular Piano Roll', description: 'MIDI notes travelling around a circular playhead', category: 'us.maok.midipack1' },
+    metadata: {
+        name: 'Circular Piano Roll',
+        description: 'MIDI notes travelling around a circular playhead',
+        category: 'us.maok.midipack1',
+    },
     schema: CircularPianoRollElement.getConfigSchema(),
     create(props, context) {
-        const renderer = new CircularPianoRollElement('circular-piano-roll', { ...props });
-        renderer.__attach(context, props);
+        const renderer = new CircularPianoRollElement(props, context);
         return renderer;
     },
     render(props, renderer, time) {
-        renderer.__update(props);
-        return renderer._buildRenderObjects({}, time.seconds);
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
     },
     dispose(renderer) {
-        renderer.__dispose();
+        renderer.runtime.dispose();
     },
 });
 export default circularPianoRoll;

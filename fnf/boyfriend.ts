@@ -1,7 +1,13 @@
 // @ts-nocheck
-import { definePluginElement, CallbackElementRenderer, prop, insertElementConfig, tab } from './sdk-compat';
+import { definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
 import { VisualMedia, Rectangle, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from './sdk-compat';
+import {
+    ElementRuntime,
+    insertElementConfig,
+    type EnhancedConfigSchema,
+    type RendererContext,
+    type RendererProps,
+} from './element-runtime';
 
 const NOTE_ANIMATIONS: Record<number, string> = {
     0: 'BF NOTE LEFT',
@@ -11,18 +17,19 @@ const NOTE_ANIMATIONS: Record<number, string> = {
 };
 const IDLE_DURATION_SEC = 14 / 24;
 
-class BoyfriendElement extends CallbackElementRenderer {
-    private readonly _bundledAtlas = this.bundledSparrow('BOYFRIEND.png', 'BOYFRIEND.xml');
+class BoyfriendElement {
+    readonly runtime = new ElementRuntime();
+    private readonly _bundledAtlas = this.runtime.bundledSparrow('BOYFRIEND.png', 'BOYFRIEND.xml');
     private readonly _media = new VisualMedia(0, 0, 200, 200);
     private readonly _layoutRect = new Rectangle(0, 0, 200, 200, { fillColor: null, strokeColor: null });
 
-    constructor(id: string = 'boyfriend', config: Record<string, unknown> = {}) {
-        super('boyfriend', id, config);
+    constructor(props: RendererProps, context: RendererContext) {
+        this.runtime.attach(context, props);
     }
 
-    static override getConfigSchema(): EnhancedConfigSchema {
+    static getConfigSchema(): EnhancedConfigSchema {
         return insertElementConfig(
-            super.getConfigSchema(),
+            { tabs: [] },
             { name: 'Boyfriend', description: 'MIDI reactive boyfriend from FNF', category: 'us.maok.fnf' },
             [
                 tab.content([
@@ -53,21 +60,21 @@ class BoyfriendElement extends CallbackElementRenderer {
         );
     }
 
-    override _buildRenderObjects(_config: unknown, targetTime: number): RenderObject[] {
-        const props = this.getSchemaProps();
+    render(targetTime: number): RenderObject[] {
+        const props = this.runtime.props;
         if (!props.visible) return [];
         const width = 450;
         const height = 450;
         this._layoutRect.setOrigin(0, 0).setSize(width, height);
-        const metadata = this.context.timeline?.getMetadata();
+        const metadata = this.runtime.context.timeline?.getMetadata();
         const bpm = metadata?.ok ? metadata.value.tempoBpm : 120;
         const trackId = props.midiTrackId as string | null;
         const selected = trackId
-            ? this.context.timeline?.selectNotes({
-                      trackIds: [trackId],
-                      startSeconds: targetTime - 8,
-                      endSeconds: targetTime + 0.05,
-                  })
+            ? this.runtime.context.timeline?.selectNotes({
+                  trackIds: [trackId],
+                  startSeconds: targetTime - 8,
+                  endSeconds: targetTime + 0.05,
+              })
             : undefined;
         const notes = selected?.ok ? selected.value : [];
         const active = notes.find((note) => note.startSeconds <= targetTime && targetTime < note.endSeconds);
@@ -95,16 +102,15 @@ export const boyfriend = definePluginElement({
     metadata: { name: 'Boyfriend', description: 'MIDI reactive boyfriend from FNF', category: 'us.maok.fnf' },
     schema: BoyfriendElement.getConfigSchema(),
     create(props, context) {
-        const renderer = new BoyfriendElement('boyfriend', { ...props });
-        renderer.__attach(context, props);
+        const renderer = new BoyfriendElement(props, context);
         return renderer;
     },
     render(props, renderer, time) {
-        renderer.__update(props);
-        return renderer._buildRenderObjects({}, time.seconds);
+        renderer.runtime.update(props);
+        return renderer.render(time.seconds);
     },
     dispose(renderer) {
-        renderer.__dispose();
+        renderer.runtime.dispose();
     },
 });
 export default boyfriend;
