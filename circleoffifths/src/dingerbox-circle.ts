@@ -1,4 +1,4 @@
-import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
+import { defineRendererElement } from './sdk-compat';
 import {
     Arc,
     CallbackElementRenderer,
@@ -12,8 +12,8 @@ import {
     prop,
     tab,
     type RenderObject,
-} from '@mvmnt-app/plugin-sdk';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
+import type { EnhancedConfigSchema } from './sdk-compat';
 import * as af from '@mvmnt-app/plugin-sdk/animation';
 
 const TAU = Math.PI * 2;
@@ -285,7 +285,7 @@ class DingerboxCircleElement extends CallbackElementRenderer {
 }
 
 export const dingerboxCircle = defineRendererElement(
-    { type: 'dingerbox-circle', capabilities: { required: ['timeline.read', 'midi.utils'], optional: [] } },
+    { type: 'dingerbox-circle' },
     DingerboxCircleElement
 );
 

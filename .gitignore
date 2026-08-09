@@ -2,3 +2,4 @@ plugins_go_here.txt
 .DS_Store
 **/node_modules/
 **/.build/
+**/dist/

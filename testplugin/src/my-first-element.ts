@@ -24,7 +24,6 @@ export const myFirstElement = definePluginElement<MyFirstElementProps, undefined
             }],
         }],
     },
-    capabilities: { required: [], optional: [] },
     render(props): readonly RenderObject[] {
         return [new Rectangle(0, 0, props.size, props.size, { fillColor: props.color })];
     },

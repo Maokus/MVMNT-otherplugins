@@ -1,4 +1,4 @@
-import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
+import { defineRendererElement } from './sdk-compat';
 // Audio-reactive GIF frame controller. The selected frame is calculated solely
 // from the requested timeline time, so scrubbing and export are deterministic.
 import {
@@ -9,9 +9,9 @@ import {
     Rectangle,
     type RenderObject,
     type VisualResource,
-} from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
 import { VisualMedia } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+import type { EnhancedConfigSchema } from './sdk-compat';
 
 function frameStartTime(resource: VisualResource | null, normalizedVolume: number): number {
     const frames = resource?.frames ?? [];
@@ -143,5 +143,5 @@ class EbWubElement extends CallbackElementRenderer {
     }
 }
 
-export const ebWub = defineRendererElement({ type: 'eb-wub', capabilities: { required: ['audio.raw.read'], optional: [] }, }, EbWubElement);
+export const ebWub = defineRendererElement({ type: 'eb-wub' }, EbWubElement);
 export default ebWub;

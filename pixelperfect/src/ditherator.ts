@@ -1,7 +1,7 @@
-import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
-import { CallbackElementRenderer, prop, insertElementConfig, tab, type RenderObject } from '@mvmnt-app/plugin-sdk';
+import { defineRendererElement } from './sdk-compat';
+import { CallbackElementRenderer, prop, insertElementConfig, tab, type RenderObject } from './sdk-compat';
 import { PixelGrid } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+import type { EnhancedConfigSchema } from './sdk-compat';
 import { BAYER4, parseHexRGBA, PixelBuffer } from './pixel-buffer';
 
 // ── Noise helpers ─────────────────────────────────────────────────────────────
@@ -412,5 +412,5 @@ class DitheratorElement extends CallbackElementRenderer {
     }
 }
 
-export const ditherator = defineRendererElement({ type: 'ditherator', capabilities: { required: [], optional: [] }, }, DitheratorElement);
+export const ditherator = defineRendererElement({ type: 'ditherator' }, DitheratorElement);
 export default ditherator;

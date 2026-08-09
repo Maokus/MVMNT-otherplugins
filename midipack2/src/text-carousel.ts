@@ -1,4 +1,4 @@
-import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
+import { defineRendererElement } from './sdk-compat';
 import {
     CallbackElementRenderer,
     prop,
@@ -7,9 +7,9 @@ import {
     parseFontSelection,
     ensureFontLoaded,
     type RenderObject,
-} from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
 import { Text, Rectangle } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+import type { EnhancedConfigSchema } from './sdk-compat';
 import { applyAnimation, FLIP_PRE } from './animations';
 
 let _measureCanvas: HTMLCanvasElement | null = null;
@@ -244,5 +244,5 @@ class TextCarouselElement extends CallbackElementRenderer {
     }
 }
 
-export const textCarousel = defineRendererElement({ type: 'text-carousel', capabilities: { required: ['timeline.read'], optional: [] }, }, TextCarouselElement);
+export const textCarousel = defineRendererElement({ type: 'text-carousel' }, TextCarouselElement);
 export default textCarousel;

@@ -1,7 +1,7 @@
 // @ts-nocheck
-import { definePluginElement, CallbackElementRenderer, prop, insertElementConfig, tab } from '@mvmnt-app/plugin-sdk';
+import { definePluginElement, CallbackElementRenderer, prop, insertElementConfig, tab } from './sdk-compat';
 import { VisualMedia, Rectangle, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+import type { EnhancedConfigSchema } from './sdk-compat';
 
 const NOTE_ANIMATIONS: Record<number, string> = {
     0: 'BF NOTE LEFT',
@@ -94,7 +94,6 @@ export const boyfriend = definePluginElement({
     type: 'boyfriend',
     metadata: { name: 'Boyfriend', description: 'MIDI reactive boyfriend from FNF', category: 'us.maok.fnf' },
     schema: BoyfriendElement.getConfigSchema(),
-    capabilities: { required: ['timeline.read'], optional: [] },
     create(props, context) {
         const renderer = new BoyfriendElement('boyfriend', { ...props });
         renderer.__attach(context, props);

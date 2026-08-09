@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { definePluginElement } from '@mvmnt-app/plugin-sdk';
+import { definePluginElement } from './sdk-compat';
 // CircularPianoRoll — notes travel clockwise around a ring and "play" when they reach the trigger point.
 // Notes are rendered as arc segments on the ring; pitch can optionally map to hue.
 // Hit effects (marker, ripple, arc glow) trigger when a note's start time reaches targetTime.
@@ -15,8 +15,8 @@ import {
     Arc,
     GlowLayer,
     type RenderObject,
-} from '@mvmnt-app/plugin-sdk';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
+import type { EnhancedConfigSchema } from './sdk-compat';
 import { withAlpha, pushHitEffects } from './piano-roll-effects';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -686,7 +686,6 @@ export const circularPianoRoll = definePluginElement({
     type: 'circular-piano-roll',
     metadata: { name: 'Circular Piano Roll', description: 'MIDI notes travelling around a circular playhead', category: 'us.maok.midipack1' },
     schema: CircularPianoRollElement.getConfigSchema(),
-    capabilities: { required: ['timeline.read'], optional: [] },
     create(props, context) {
         const renderer = new CircularPianoRollElement('circular-piano-roll', { ...props });
         renderer.__attach(context, props);

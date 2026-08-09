@@ -3,13 +3,19 @@
   "version": "1.0.2",
   "private": true,
   "type": "module",
-  "scripts": { "typecheck": "tsc --noEmit" },
+  "scripts": {
+    "dev": "mvmnt-plugin dev",
+    "build": "mvmnt-plugin build",
+    "check": "mvmnt-plugin check",
+    "typecheck": "tsc --noEmit"
+  },
   "dependencies": {
     "@mvmnt-app/plugin-sdk": "file:../../MVMNT/packages/plugin-sdk",
     "seedrandom": "^3.0.5"
   },
   "devDependencies": {
     "@types/seedrandom": "^3.0.8",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "@mvmnt-app/plugin-tools": "file:../../MVMNT/packages/plugin-tools"
   }
 }

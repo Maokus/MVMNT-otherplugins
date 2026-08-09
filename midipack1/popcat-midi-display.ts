@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { definePluginElement } from '@mvmnt-app/plugin-sdk';
+import { definePluginElement } from './sdk-compat';
 import {
     CallbackElementRenderer,
     parseFontSelection,
@@ -7,11 +7,11 @@ import {
     prop,
     insertElementConfig,
     tab,
-} from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
 
 import { VisualMedia, Text, Rectangle, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+import type { EnhancedConfigSchema } from './sdk-compat';
 
 const ANIM_DURATION_MS = 100;
 const JUMP_OFFSET_PX = 20;
@@ -399,7 +399,6 @@ export const popcatMidiDisplay = definePluginElement({
     type: 'popcat-midi-display',
     metadata: { name: 'Popcat MIDI Display', description: 'A MIDI-reactive Popcat', category: 'us.maok.midipack1' },
     schema: PopcatMidiDisplayElement.getConfigSchema(),
-    capabilities: { required: ['timeline.read'], optional: [] },
     create(props, context) {
         const renderer = new PopcatMidiDisplayElement('popcat-midi-display', { ...props });
         renderer.__attach(context, props);

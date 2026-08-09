@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { definePluginElement } from '@mvmnt-app/plugin-sdk';
+import { definePluginElement } from './sdk-compat';
 import {
     CallbackElementRenderer,
     Rectangle,
@@ -11,8 +11,8 @@ import {
     insertElementConfig,
     tab,
     type RenderObject,
-} from '@mvmnt-app/plugin-sdk';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
+import type { EnhancedConfigSchema } from './sdk-compat';
 
 function easeOutCubic(t: number): number {
     return 1 - Math.pow(1 - t, 3);
@@ -368,7 +368,6 @@ export const collisionMidiDisplay = definePluginElement({
     type: 'collision-midi-display',
     metadata: { name: 'Collision MIDI Display', description: 'MIDI-reactive collision display', category: 'us.maok.midipack1' },
     schema: CollisionMidiDisplayElement.getConfigSchema(),
-    capabilities: { required: ['timeline.read'], optional: [] },
     create(props, context) {
         const renderer = new CollisionMidiDisplayElement('collision-midi-display', { ...props });
         renderer.__attach(context, props);

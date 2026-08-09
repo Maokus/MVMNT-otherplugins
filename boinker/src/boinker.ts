@@ -1,4 +1,4 @@
-import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
+import { defineRendererElement } from './sdk-compat';
 import {
     CallbackElementRenderer,
     prop,
@@ -7,7 +7,7 @@ import {
     VisualMediaPlayback,
 
 
-} from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
 import { VisualMedia, EmptyRenderObject, Rectangle, Text, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import type {
     BundledSprite,
@@ -15,7 +15,7 @@ import type {
     EnhancedConfigSchema,
     VisualResource,
     ResourceStatus,
-} from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
 
 const BASE_SIZE = 600;
 
@@ -180,5 +180,5 @@ class BoinkerElement extends CallbackElementRenderer {
     }
 }
 
-export const boinker = defineRendererElement({ type: 'boinker', capabilities: { required: ['audio.features.read', 'timing.conversion'], optional: [] }, featureRequirements: [{ feature: 'rms' }], }, BoinkerElement);
+export const boinker = defineRendererElement({ type: 'boinker', featureRequirements: [{ feature: 'rms' }], }, BoinkerElement);
 export default boinker;

@@ -5,12 +5,12 @@ The SDK dependency resolves to the sibling `MVMNT` checkout so it follows the cu
 
 ```sh
 npm install
-npm run typecheck
+npm run check
 ```
 
-Preview or package it from a MVMNT checkout:
+Preview and package it directly from this plugin folder:
 
 ```sh
-npm run dev-plugin -- /absolute/path/to/testplugin
-npm run build-plugin -- /absolute/path/to/testplugin
+npm run dev
+npm run build
 ```

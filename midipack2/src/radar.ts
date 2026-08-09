@@ -1,4 +1,4 @@
-import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
+import { defineRendererElement } from './sdk-compat';
 // Radar — a sweeping playhead rotates around the centre. When it crosses a note's
 // phase position a marker appears at the corresponding pitch radius and fades out.
 
@@ -8,9 +8,9 @@ import {
     insertElementConfig,
     tab,
     type RenderObject,
-} from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
 import { Arc, Line, Rectangle, Text, GlowLayer } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+import type { EnhancedConfigSchema } from './sdk-compat';
 import * as af from '@mvmnt-app/plugin-sdk/animation';
 import { applyAnimation } from './animations';
 
@@ -484,5 +484,5 @@ class RadarElement extends CallbackElementRenderer {
     }
 }
 
-export const radar = defineRendererElement({ type: 'radar', capabilities: { required: ['timeline.read'], optional: [] }, }, RadarElement);
+export const radar = defineRendererElement({ type: 'radar' }, RadarElement);
 export default radar;

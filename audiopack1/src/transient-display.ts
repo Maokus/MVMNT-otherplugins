@@ -9,8 +9,8 @@ import {
     Line,
     type PluginAudioCalculator,
     type RenderObject,
-} from '@mvmnt-app/plugin-sdk';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
+import type { EnhancedConfigSchema } from './sdk-compat';
 
 const TRANSIENT_FEATURE = 'audiopack1.transients';
 const TRANSIENT_CALCULATOR_ID = 'us.maok.audiopack1.transients';
@@ -468,7 +468,6 @@ class TransientDisplayElement extends CallbackElementRenderer {
 
 export const transientDisplay = defineRendererElement({
     type: 'transient-display',
-    capabilities: { required: ['audio.features.read', 'audio.raw.read', 'timing.conversion', 'timeline.read', 'audio.calculators.register'], optional: [] },
     calculators: [transientCalculator],
     featureRequirements: [{ feature: TRANSIENT_FEATURE, calculatorId: TRANSIENT_CALCULATOR_ID }],
 }, TransientDisplayElement);

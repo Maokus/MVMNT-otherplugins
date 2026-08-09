@@ -1,4 +1,4 @@
-import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
+import { defineRendererElement } from './sdk-compat';
 import {
     Arc,
     ensureFontLoaded,
@@ -10,8 +10,8 @@ import {
     prop,
     tab,
     type RenderObject,
-} from '@mvmnt-app/plugin-sdk';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
+import type { EnhancedConfigSchema } from './sdk-compat';
 import * as af from '@mvmnt-app/plugin-sdk/animation';
 
 const PITCH_CLASSES = [
@@ -425,7 +425,7 @@ class SonofieldCircleElement extends CallbackElementRenderer {
 }
 
 export const sonofieldCircle = defineRendererElement(
-    { type: 'sonofield-circle', capabilities: { required: ['timeline.read'], optional: [] } },
+    { type: 'sonofield-circle' },
     SonofieldCircleElement
 );
 export default sonofieldCircle;

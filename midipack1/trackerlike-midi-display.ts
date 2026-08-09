@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { definePluginElement } from '@mvmnt-app/plugin-sdk';
+import { definePluginElement } from './sdk-compat';
 import {
     CallbackElementRenderer,
     Text,
@@ -7,8 +7,8 @@ import {
     insertElementConfig,
     tab,
     type RenderObject,
-} from '@mvmnt-app/plugin-sdk';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
+import type { EnhancedConfigSchema } from './sdk-compat';
 
 class TrackerlikeMidiDisplayElement extends CallbackElementRenderer {
     constructor(id: string = 'trackerlike-midi-display', config: Record<string, unknown> = {}) {
@@ -168,7 +168,6 @@ export const trackerlikeMidiDisplay = definePluginElement({
     type: 'trackerlike-midi-display',
     metadata: { name: 'Trackerlike MIDI Display', description: 'A tracker-style MIDI note display', category: 'us.maok.midipack1' },
     schema: TrackerlikeMidiDisplayElement.getConfigSchema(),
-    capabilities: { required: ['timeline.read', 'timing.conversion'], optional: [] },
     create(props, context) {
         const renderer = new TrackerlikeMidiDisplayElement('trackerlike-midi-display', { ...props });
         renderer.__attach(context, props);

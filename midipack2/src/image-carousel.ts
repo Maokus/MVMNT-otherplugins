@@ -1,4 +1,4 @@
-import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
+import { defineRendererElement } from './sdk-compat';
 import {
     CallbackElementRenderer,
     prop,
@@ -6,9 +6,9 @@ import {
     tab,
 
     type RenderObject,
-} from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
 import { VisualMedia, Text, Rectangle } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+import type { EnhancedConfigSchema } from './sdk-compat';
 import { applyAnimation, FLIP_PRE } from './animations';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -170,5 +170,5 @@ class ImageCarouselElement extends CallbackElementRenderer {
     }
 }
 
-export const imageCarousel = defineRendererElement({ type: 'image-carousel', capabilities: { required: ['timeline.read'], optional: [] }, }, ImageCarouselElement);
+export const imageCarousel = defineRendererElement({ type: 'image-carousel' }, ImageCarouselElement);
 export default imageCarousel;

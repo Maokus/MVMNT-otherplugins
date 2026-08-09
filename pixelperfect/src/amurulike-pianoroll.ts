@@ -1,13 +1,13 @@
-import { defineRendererElement } from '@mvmnt-app/plugin-sdk';
+import { defineRendererElement } from './sdk-compat';
 import {
     CallbackElementRenderer,
     prop,
     insertElementConfig,
     tab,
     type RenderObject,
-} from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
 import { PixelGrid } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+import type { EnhancedConfigSchema } from './sdk-compat';
 import { parseHex6, BAYER4 } from './pixel-buffer';
 import * as af from '@mvmnt-app/plugin-sdk/animation';
 import alea from 'seedrandom';
@@ -481,5 +481,5 @@ class AmurulikePianorollElement extends CallbackElementRenderer {
     }
 }
 
-export const amurulikePianoroll = defineRendererElement({ type: 'amurulike-pianoroll', capabilities: { required: ['timeline.read'], optional: [] }, }, AmurulikePianorollElement);
+export const amurulikePianoroll = defineRendererElement({ type: 'amurulike-pianoroll' }, AmurulikePianorollElement);
 export default amurulikePianoroll;

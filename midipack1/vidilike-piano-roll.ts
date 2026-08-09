@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { definePluginElement } from '@mvmnt-app/plugin-sdk';
+import { definePluginElement } from './sdk-compat';
 // VidilikePianoRoll — notes scroll right-to-left past a static playhead.
 // When a note's head crosses the playhead a marker, ripple, and/or animation trigger.
 
@@ -13,8 +13,8 @@ import {
     Line,
     GlowLayer,
     type RenderObject,
-} from '@mvmnt-app/plugin-sdk';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
+import type { EnhancedConfigSchema } from './sdk-compat';
 import { pushHitEffects, getPressTransform, getPluckTransform } from './piano-roll-effects';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -439,7 +439,6 @@ export const vidilikePianoRoll = definePluginElement({
     type: 'vidilike-piano-roll',
     metadata: { name: 'Vidilike Piano Roll', description: 'Notes scrolling right-to-left past a static playhead', category: 'us.maok.midipack1' },
     schema: VidilikePianoRollElement.getConfigSchema(),
-    capabilities: { required: ['timeline.read'], optional: [] },
     create(props, context) {
         const renderer = new VidilikePianoRollElement('vidilike-piano-roll', { ...props });
         renderer.__attach(context, props);

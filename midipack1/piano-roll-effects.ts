@@ -2,7 +2,7 @@
 // Shared hit-effects and note-animation helpers for piano roll elements.
 // Used by vidilike-piano-roll and circular-piano-roll.
 
-import { Arc, BezierPath, Line, Poly, remap, Text, type RenderObject } from '@mvmnt-app/plugin-sdk';
+import { Arc, BezierPath, Line, Poly, remap, Text, type RenderObject } from './sdk-compat';
 
 import * as anim from '@mvmnt-app/plugin-sdk/animation';
 

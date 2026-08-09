@@ -32,7 +32,6 @@ export const particlesPattern = definePluginElement<ParticlesProps, undefined>({
             { id: 'bubbles', label: 'Bubbles', values: { particleCount: 25, particleSize: 20, particleOpacity: 0.4, particleColor: '#88CCFFFF' } },
         ] },
     ] }] },
-    capabilities: { required: [], optional: [] },
     render(props, _state, time) {
         const anchor = new Rectangle(-props.elementWidth / 2, -props.elementHeight / 2, props.elementWidth, props.elementHeight, { fillColor: undefined });
         anchor.setLayoutParticipation('include');

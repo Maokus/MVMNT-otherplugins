@@ -8,9 +8,9 @@ import {
     type MidiNoteEvent,
     type VisualResource,
     type ResourceStatus,
-} from '@mvmnt-app/plugin-sdk';
+} from './sdk-compat';
 import { VisualMedia, Rectangle, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
-import type { EnhancedConfigSchema } from '@mvmnt-app/plugin-sdk';
+import type { EnhancedConfigSchema } from './sdk-compat';
 
 // MIDI note % 4 → lane: 0=LEFT(purple), 1=DOWN(blue), 2=UP(green), 3=RIGHT(red)
 const LANE_DIRS = ['Left', 'Down', 'Up', 'Right'] as const;
@@ -480,7 +480,6 @@ export const arrows = definePluginElement({
     type: 'arrows',
     metadata: { name: 'Arrows', description: 'FNF-style arrow strumline with falling notes', category: 'us.maok.fnf' },
     schema: ArrowsElement.getConfigSchema(),
-    capabilities: { required: ['timeline.read'], optional: [] },
     create(props, context) {
         const renderer = new ArrowsElement('arrows', { ...props });
         renderer.__attach(context, props);
