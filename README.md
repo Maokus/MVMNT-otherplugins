@@ -13,7 +13,7 @@ npm run dev
 ```
 
 `npm run dev` starts the development plugin server and watches that plugin's source, manifest, and
-assets. Connect to it from **Scene Settings → Debug** in a development build of MVMNT. Use
+assets. Connect to it from **Scene Settings → Developer** in a development build of MVMNT. Use
 `npm run build` to write the distributable `.mvmnt-plugin` archive under that plugin's `dist/`
 folder, and `npm run typecheck` when only a fast TypeScript pass is needed.
 

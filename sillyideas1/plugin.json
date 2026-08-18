@@ -1,0 +1,15 @@
+{
+  "id": "us.maok.sillyideas1",
+  "name": "Silly Ideas 1",
+  "version": "1.0.0",
+  "apiVersion": "^2.0.0",
+  "description": "A sorted raw-PCM waveform display.",
+  "author": "MVMNT",
+  "elements": [
+    {
+      "type": "sorted-waveform",
+      "entry": "src/sorted-waveform.ts",
+      "capabilities": { "required": ["audio.raw.read"], "optional": [] }
+    }
+  ]
+}

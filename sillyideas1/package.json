@@ -1,0 +1,19 @@
+{
+  "name": "us.maok.sillyideas1",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "mvmnt-plugin dev",
+    "build": "mvmnt-plugin build",
+    "check": "mvmnt-plugin check",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mvmnt-app/plugin-sdk": "file:../../mvmnt/packages/plugin-sdk"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@mvmnt-app/plugin-tools": "file:../../mvmnt/packages/plugin-tools"
+  }
+}
