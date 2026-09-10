@@ -36,6 +36,14 @@
         "required": ["audio.raw.read"],
         "optional": []
       }
+    },
+    {
+      "type": "bouncy-ball-lab",
+      "entry": "src/bouncy-ball-lab.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
     }
   ]
 }
