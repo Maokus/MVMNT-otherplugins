@@ -1,0 +1,19 @@
+{
+  "name": "us.maok.simulationpack1",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "mvmnt-plugin dev",
+    "build": "mvmnt-plugin build",
+    "check": "mvmnt-plugin check",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@mvmnt-app/plugin-sdk": "file:../../MVMNT/packages/plugin-sdk"
+  },
+  "devDependencies": {
+    "@mvmnt-app/plugin-tools": "file:../../MVMNT/packages/plugin-tools",
+    "typescript": "^5.9.3"
+  }
+}

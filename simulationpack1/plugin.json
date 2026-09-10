@@ -1,0 +1,33 @@
+{
+  "id": "us.maok.simulationpack1",
+  "name": "Simulation Pack 1",
+  "version": "0.1.0",
+  "apiVersion": "^2.0.0",
+  "description": "Deterministic fixed-step simulation examples for MIDI, particles, and analyzed audio.",
+  "elements": [
+    {
+      "type": "spring-ball",
+      "entry": "src/spring-ball.ts",
+      "capabilities": {
+        "required": ["timeline.read"],
+        "optional": []
+      }
+    },
+    {
+      "type": "particle-burst",
+      "entry": "src/particle-burst.ts",
+      "capabilities": {
+        "required": ["timeline.read"],
+        "optional": []
+      }
+    },
+    {
+      "type": "audio-inertia",
+      "entry": "src/audio-inertia.ts",
+      "capabilities": {
+        "required": ["audio.features.read"],
+        "optional": []
+      }
+    }
+  ]
+}
