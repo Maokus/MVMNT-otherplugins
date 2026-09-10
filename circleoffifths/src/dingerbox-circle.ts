@@ -291,16 +291,16 @@ export const dingerboxCircle = definePluginElement({
         category: dingerboxCircleSchema.category,
     },
     schema: dingerboxCircleSchema,
-    create(props, context) {
-        const renderer = new DingerboxCircleElement(props, context);
-        return renderer;
+    createResources(context) {
+        return new DingerboxCircleElement({}, context as RendererContext);
     },
-    render(props, renderer, time) {
-        renderer.runtime.update(props);
-        return renderer.render(time.seconds);
+    render({ props, resources, time, context }) {
+        resources.runtime.attach(context, props);
+        return resources.render(time.seconds);
     },
-    dispose(renderer) {
-        renderer.runtime.dispose();
+    disposeResources(resources) {
+        resources.runtime.dispose();
+        return undefined;
     },
 });
 

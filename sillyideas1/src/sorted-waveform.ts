@@ -128,7 +128,7 @@ export const sortedWaveform = definePluginElement({
             ]),
         ],
     },
-    render(props, _state, time, context): readonly RenderObject[] {
+    render({ props, time, context }): readonly RenderObject[] {
         const width = clamp(props.width, 1, 8192, 800);
         const height = clamp(props.height, 1, 8192, 300);
         const objects: RenderObject[] = [new Rectangle(0, 0, width, height, { fillColor: typeof props.backgroundColor === 'string' ? props.backgroundColor : '#0F172A00' })];

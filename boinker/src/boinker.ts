@@ -1,4 +1,4 @@
-import { PluginContractError, definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
+import { definePluginElement, prop, tab } from '@mvmnt-app/plugin-sdk';
 import { VisualMedia, EmptyRenderObject, Rectangle, Text, type RenderObject } from '@mvmnt-app/plugin-sdk/render';
 import { VisualMediaPlayback } from '@mvmnt-app/plugin-sdk/visual-assets';
 import type {
@@ -186,24 +186,19 @@ export const boinker = definePluginElement({
     type: 'boinker',
     metadata: { name: boinkerSchema.name, description: boinkerSchema.description, category: boinkerSchema.category },
     schema: boinkerSchema,
-    load(context) {
-        const required = context.audio?.requireFeatures([{ feature: 'rms' }]);
-        if (!required?.ok) {
-            throw new PluginContractError(
-                required?.error.message ?? 'audio.features.read is required for feature requirements'
-            );
-        }
+    audioFeatureDemands(props) {
+        return [{ id: 'rms', trackId: props.audioTrackId, feature: 'rms' }];
     },
-    create(props, context) {
-        const renderer = new BoinkerElement(props, context);
-        return renderer;
+    createResources(context) {
+        return new BoinkerElement({}, context as RendererContext);
     },
-    render(props, renderer, time) {
-        renderer.runtime.update(props);
-        return renderer.render(time.seconds);
+    render({ props, resources, time, context }) {
+        resources.runtime.attach(context, props);
+        return resources.render(time.seconds);
     },
-    dispose(renderer) {
-        renderer.runtime.dispose();
+    disposeResources(resources) {
+        resources.runtime.dispose();
+        return undefined;
     },
 });
 export default boinker;

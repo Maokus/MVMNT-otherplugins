@@ -481,16 +481,16 @@ export const arrows = definePluginElement({
     type: 'arrows',
     metadata: { name: 'Arrows', description: 'FNF-style arrow strumline with falling notes', category: 'us.maok.fnf' },
     schema: ArrowsElement.getConfigSchema(),
-    create(props, context) {
-        const renderer = new ArrowsElement(props, context);
-        return renderer;
+    createResources(context) {
+        return new ArrowsElement({}, context as RendererContext);
     },
-    render(props, renderer, time) {
-        renderer.runtime.update(props);
-        return renderer.render(time.seconds);
+    render({ props, resources, time, context }) {
+        resources.runtime.attach(context, props);
+        return resources.render(time.seconds);
     },
-    dispose(renderer) {
-        renderer.runtime.dispose();
+    disposeResources(resources) {
+        resources.runtime.dispose();
+        return undefined;
     },
 });
 export default arrows;

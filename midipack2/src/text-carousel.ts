@@ -9,20 +9,21 @@ import {
 } from './element-runtime';
 import { applyAnimation, FLIP_PRE } from './animations';
 
-let _measureCanvas: HTMLCanvasElement | null = null;
-function measureTextWidth(text: string, fontString: string): number {
-    if (!_measureCanvas) _measureCanvas = document.createElement('canvas');
-    const ctx = _measureCanvas.getContext('2d')!;
-    ctx.font = fontString;
-    return ctx.measureText(text).width;
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 
 class TextCarouselElement {
     readonly runtime = new ElementRuntime();
+    private _measureCanvas: HTMLCanvasElement | null = null;
+
     constructor(props: RendererProps, context: RendererContext) {
         this.runtime.attach(context, props);
+    }
+
+    private measureTextWidth(text: string, fontString: string): number {
+        this._measureCanvas ??= document.createElement('canvas');
+        const context = this._measureCanvas.getContext('2d')!;
+        context.font = fontString;
+        return context.measureText(text).width;
     }
 
     static getConfigSchema(): EnhancedConfigSchema {
@@ -229,7 +230,7 @@ class TextCarouselElement {
         ];
 
         if (bgEnabled) {
-            const measuredWidth = measureTextWidth(lines[lineIndex], fontString);
+            const measuredWidth = this.measureTextWidth(lines[lineIndex], fontString);
             const clampedWidth = Math.min(measuredWidth, lw);
             const bgW = clampedWidth + bgPadding * 2;
             const bgH = baseFontSize + bgPadding * 2;
@@ -265,16 +266,16 @@ export const textCarousel = definePluginElement({
         category: textCarouselSchema.category,
     },
     schema: textCarouselSchema,
-    create(props, context) {
-        const renderer = new TextCarouselElement(props, context);
-        return renderer;
+    createResources(context) {
+        return new TextCarouselElement({}, context as RendererContext);
     },
-    render(props, renderer, time) {
-        renderer.runtime.update(props);
-        return renderer.render(time.seconds);
+    render({ props, resources, time, context }) {
+        resources.runtime.attach(context, props);
+        return resources.render(time.seconds);
     },
-    dispose(renderer) {
-        renderer.runtime.dispose();
+    disposeResources(resources) {
+        resources.runtime.dispose();
+        return undefined;
     },
 });
 export default textCarousel;

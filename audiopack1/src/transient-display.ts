@@ -95,14 +95,6 @@ type TimingApi = {
 
 type TransientSample = { time: number; transient: boolean };
 
-type TransientScanCache = {
-    trackId: string;
-    maxInterval: number;
-    start: number;
-    end: number;
-    transientTimes: number[];
-};
-
 function alignDown(value: number, step: number): number {
     return Math.floor((value + step * 1e-6) / step) * step;
 }
@@ -185,7 +177,6 @@ function getMinimumIntervalSeconds(startTime: number, beatsPerBar: number, timin
 class TransientDisplayElement {
     readonly runtime = new ElementRuntime();
     static readonly elementType = 'transient-display' as const;
-    private transientScanCache: TransientScanCache | null = null;
 
     constructor(props: RendererProps, context: RendererContext) {
         this.runtime.attach(context, props);
@@ -320,48 +311,22 @@ class TransientDisplayElement {
 
         const scanStart = alignUp(Math.max(0, targetTime - maxInterval), stepSeconds);
         const scanEnd = alignDown(targetTime + maxInterval, stepSeconds);
-        const cache = this.transientScanCache;
-        const canReuseCache =
-            cache !== null &&
-            cache.trackId === trackId &&
-            cache.maxInterval === maxInterval &&
-            cache.start <= scanStart &&
-            cache.end >= scanEnd;
-        if (!canReuseCache) {
-            // Cache a wider, globally aligned window. This avoids thousands of feature lookups on
-            // every rendered frame and keeps marker times independent of the moving playhead.
-            const cacheStart = alignDown(Math.max(0, targetTime - maxInterval * 2), stepSeconds);
-            const cacheEnd = alignUp(targetTime + maxInterval * 2, stepSeconds);
-            const rawSamplesResult = audio.sampleFeatureRange({
-                trackId,
-                feature: TRANSIENT_FEATURE,
-                startSeconds: cacheStart,
-                endSeconds: cacheEnd,
-                stepSeconds,
-            });
-            const rawSamples = rawSamplesResult.ok ? rawSamplesResult.value : [];
-            if (rawSamples.length) {
-                const samples: TransientSample[] = rawSamples.map((sample) => {
-                    const values = Array.isArray(sample.value) ? sample.value : [Number(sample.value) || 0];
-                    return {
-                        time: sample.timeSeconds,
-                        transient: (values[0] ?? 0) >= 0.5,
-                    };
-                });
-                this.transientScanCache = {
-                    trackId,
-                    maxInterval,
-                    start: cacheStart,
-                    end: cacheEnd,
-                    transientTimes: extractTransientTimes(samples),
-                };
-            } else {
-                // Do not cache a miss: the requested feature calculation may still be in progress.
-                this.transientScanCache = null;
-            }
-        }
-        const transientTimes = (this.transientScanCache?.transientTimes ?? []).filter(
-            (time) => time >= scanStart && time <= scanEnd
+        // Query the bounded absolute window on every render. The audio API does not expose a
+        // content revision for range reads, so retaining this result could make replacement audio
+        // under the same track ID depend on which source was rendered first.
+        const rawSamplesResult = audio.sampleFeatureRange({
+            trackId,
+            feature: TRANSIENT_FEATURE,
+            startSeconds: scanStart,
+            endSeconds: scanEnd,
+            stepSeconds,
+        });
+        const rawSamples = rawSamplesResult.ok ? rawSamplesResult.value : [];
+        const transientTimes = extractTransientTimes(
+            rawSamples.map((sample) => {
+                const values = Array.isArray(sample.value) ? sample.value : [Number(sample.value) || 0];
+                return { time: sample.timeSeconds, transient: (values[0] ?? 0) >= 0.5 };
+            })
         );
         const acceptedTransientTimes: number[] = [];
         for (const transientTime of transientTimes) {
@@ -495,25 +460,27 @@ export const transientDisplay = definePluginElement({
                 registered?.error.message ?? `Unable to register calculator '${transientCalculator.id}'`
             );
         }
-        const required = context.audio?.requireFeatures([
-            { feature: TRANSIENT_FEATURE, calculatorId: TRANSIENT_CALCULATOR_ID },
-        ]);
-        if (!required?.ok) {
-            throw new PluginContractError(
-                required?.error.message ?? 'audio.features.read is required for feature requirements'
-            );
-        }
     },
-    create(props, context) {
-        const renderer = new TransientDisplayElement(props, context);
-        return renderer;
+    audioFeatureDemands(props) {
+        return [
+            {
+                id: 'transients',
+                trackId: props.audioTrackId,
+                feature: TRANSIENT_FEATURE,
+                calculatorId: TRANSIENT_CALCULATOR_ID,
+            },
+        ];
     },
-    render(props, renderer, time) {
-        renderer.runtime.update(props);
-        return renderer.render(time.seconds);
+    createResources(context) {
+        return new TransientDisplayElement({}, context as RendererContext);
     },
-    dispose(renderer) {
-        renderer.runtime.dispose();
+    render({ props, resources, time, context }) {
+        resources.runtime.attach(context, props);
+        return resources.render(time.seconds);
+    },
+    disposeResources(resources) {
+        resources.runtime.dispose();
+        return undefined;
     },
 });
 export default transientDisplay;

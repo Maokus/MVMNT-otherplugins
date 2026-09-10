@@ -184,16 +184,16 @@ export const trackerlikeMidiDisplay = definePluginElement({
         category: 'us.maok.midipack1',
     },
     schema: TrackerlikeMidiDisplayElement.getConfigSchema(),
-    create(props, context) {
-        const renderer = new TrackerlikeMidiDisplayElement(props, context);
-        return renderer;
+    createResources(context) {
+        return new TrackerlikeMidiDisplayElement({}, context as RendererContext);
     },
-    render(props, renderer, time) {
-        renderer.runtime.update(props);
-        return renderer.render(time.seconds);
+    render({ props, resources, time, context }) {
+        resources.runtime.attach(context, props);
+        return resources.render(time.seconds);
     },
-    dispose(renderer) {
-        renderer.runtime.dispose();
+    disposeResources(resources) {
+        resources.runtime.dispose();
+        return undefined;
     },
 });
 export default trackerlikeMidiDisplay;

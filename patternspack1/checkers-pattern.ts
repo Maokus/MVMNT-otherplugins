@@ -34,7 +34,7 @@ export const checkersPattern = definePluginElement<CheckersProps, undefined>({
             { key: 'motionSpeed', label: 'Motion Speed (px/s)', type: 'number', default: 60, step: 1 },
         ] },
     ] }] },
-    render(props, _state, time) {
+    render({ props, time }) {
         const layoutRect = new Rectangle(0, 0, props.patternWidth, props.patternHeight, { fillColor: undefined });
         layoutRect.setLayoutParticipation('include');
         const angleRad = (props.motionAngle * Math.PI) / 180;

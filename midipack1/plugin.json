@@ -1,7 +1,7 @@
 {
     "id": "us.maok.midipack1",
     "name": "Midi Pack 1",
-    "version": "1.0.3",
+    "version": "1.0.4",
     "apiVersion": "^2.0.0",
     "description": "Custom plugin providing 5 elements",
     "author": "Maokus",

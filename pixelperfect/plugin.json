@@ -1,7 +1,7 @@
 {
     "id": "us.maok.pixelperfect",
     "name": "Pixel Perfect",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "apiVersion": "^2.0.0",
     "description": "Plugin of elements based around pixel art!",
     "author": "Your Name",

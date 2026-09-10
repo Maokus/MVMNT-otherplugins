@@ -1,7 +1,7 @@
 {
   "id": "us.maok.testplugin",
   "name": "Testplugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "apiVersion": "^2.0.0",
   "description": "Custom plugin",
   "author": "Your Name",

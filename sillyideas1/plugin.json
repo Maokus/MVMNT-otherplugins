@@ -1,7 +1,7 @@
 {
   "id": "us.maok.sillyideas1",
   "name": "Silly Ideas 1",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "apiVersion": "^2.0.0",
   "description": "A sorted raw-PCM waveform display.",
   "author": "MVMNT",

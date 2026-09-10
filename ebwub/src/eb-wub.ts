@@ -150,16 +150,16 @@ export const ebWub = definePluginElement({
     type: 'eb-wub',
     metadata: { name: ebWubSchema.name, description: ebWubSchema.description, category: ebWubSchema.category },
     schema: ebWubSchema,
-    create(props, context) {
-        const renderer = new EbWubElement(props, context);
-        return renderer;
+    createResources(context) {
+        return new EbWubElement({}, context as RendererContext);
     },
-    render(props, renderer, time) {
-        renderer.runtime.update(props);
-        return renderer.render(time.seconds);
+    render({ props, resources, time, context }) {
+        resources.runtime.attach(context, props);
+        return resources.render(time.seconds);
     },
-    dispose(renderer) {
-        renderer.runtime.dispose();
+    disposeResources(resources) {
+        resources.runtime.dispose();
+        return undefined;
     },
 });
 export default ebWub;

@@ -498,16 +498,16 @@ export const radar = definePluginElement({
     type: 'radar',
     metadata: { name: radarSchema.name, description: radarSchema.description, category: radarSchema.category },
     schema: radarSchema,
-    create(props, context) {
-        const renderer = new RadarElement(props, context);
-        return renderer;
+    createResources(context) {
+        return new RadarElement({}, context as RendererContext);
     },
-    render(props, renderer, time) {
-        renderer.runtime.update(props);
-        return renderer.render(time.seconds);
+    render({ props, resources, time, context }) {
+        resources.runtime.attach(context, props);
+        return resources.render(time.seconds);
     },
-    dispose(renderer) {
-        renderer.runtime.dispose();
+    disposeResources(resources) {
+        resources.runtime.dispose();
+        return undefined;
     },
 });
 export default radar;
