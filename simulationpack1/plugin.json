@@ -3,8 +3,16 @@
   "name": "Simulation Pack 1",
   "version": "0.1.0",
   "apiVersion": "^2.0.0",
-  "description": "Deterministic fixed-step simulation examples for MIDI, particles, and raw audio.",
+  "description": "Deterministic fixed-step examples for pendulums, MIDI, particles, and raw audio.",
   "elements": [
+    {
+      "type": "double-pendulum",
+      "entry": "src/double-pendulum.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
+    },
     {
       "type": "spring-ball",
       "entry": "src/spring-ball.ts",
