@@ -6,7 +6,7 @@ It contains three deterministic fixed-step examples:
 
 - **MIDI Spring Ball** — scalar position/velocity state with note-on impulses.
 - **MIDI Particle Burst** — copied typed-array state and seeded per-step randomness.
-- **Audio Inertia** — declarative RMS demands and simulation steps that wait for analyzed audio.
+- **Audio Inertia** — fixed-duration raw PCM RMS windows driving inertial state.
 
 Try seeking backward, jumping directly to a later time, changing the seed, and exporting at
 different frame rates. Each element should produce the same frame for the same authored inputs and

@@ -3,7 +3,7 @@
   "name": "Simulation Pack 1",
   "version": "0.1.0",
   "apiVersion": "^2.0.0",
-  "description": "Deterministic fixed-step simulation examples for MIDI, particles, and analyzed audio.",
+  "description": "Deterministic fixed-step simulation examples for MIDI, particles, and raw audio.",
   "elements": [
     {
       "type": "spring-ball",
@@ -25,7 +25,7 @@
       "type": "audio-inertia",
       "entry": "src/audio-inertia.ts",
       "capabilities": {
-        "required": ["audio.features.read"],
+        "required": ["audio.raw.read"],
         "optional": []
       }
     }

@@ -4,19 +4,11 @@ import { Rectangle } from "@mvmnt-app/plugin-sdk/render";
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
-function featureValue(
-  value: number | readonly number[] | Readonly<Record<string, number>>,
-): number {
-  if (typeof value === "number") return value;
-  if (Array.isArray(value)) return value[0] ?? 0;
-  return Object.values(value)[0] ?? 0;
-}
-
 export const audioInertia = definePluginElement({
   type: "audio-inertia",
   metadata: {
     name: "Audio Inertia",
-    description: "A fixed-step inertial meter driven by analyzed RMS audio",
+    description: "A fixed-step inertial meter driven by raw-audio RMS windows",
     category: "Simulation Pack 1",
   },
   schema: {
@@ -42,9 +34,6 @@ export const audioInertia = definePluginElement({
       ]),
     ],
   },
-  audioFeatureDemands(props) {
-    return [{ id: "rms", trackId: props.audioTrackId, feature: "rms" }];
-  },
   simulation: {
     stepSeconds: 1 / 120,
     initialize: ({ seed }) => ({
@@ -53,15 +42,18 @@ export const audioInertia = definePluginElement({
     }),
     step({ state, props, time, context, deltaSeconds }) {
       const sampled = props.audioTrackId
-        ? context.audio?.sampleFeature({
+        ? context.audio?.getRms({
             trackId: props.audioTrackId,
-            feature: "rms",
-            timeSeconds: time.seconds,
+            startSeconds: time.seconds,
+            endSeconds: time.seconds + deltaSeconds,
           })
         : undefined;
-      const target = sampled?.ok
-        ? clamp(featureValue(sampled.value.value) * props.gain, 0, 1)
+      const channels = sampled?.ok ? sampled.value : undefined;
+      const rms = channels?.length
+        ? Array.from(channels).reduce((sum, value) => sum + value, 0) /
+          channels.length
         : 0;
+      const target = sampled?.ok ? clamp(rms * props.gain, 0, 1) : 0;
       const stiffness = clamp(props.stiffness, 1, 160);
       const damping = clamp(props.damping, 0, 40);
       const acceleration =
