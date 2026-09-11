@@ -1,0 +1,29 @@
+{
+  "id": "us.maok.testplugin2",
+  "name": "Testplugin2",
+  "version": "0.1.0",
+  "apiVersion": "^2.0.0",
+  "description": "A custom MVMNT visual element.",
+  "elements": [
+    {
+      "type": "testplugin2",
+      "entry": "src/testplugin2.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "midi-spring",
+      "entry": "src/midi-spring.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read"
+        ],
+        "optional": []
+      }
+    }
+  ]
+}
