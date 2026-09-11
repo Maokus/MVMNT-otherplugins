@@ -1,0 +1,96 @@
+{
+  "id": "us.maok.templatestest",
+  "name": "Templatestest",
+  "version": "0.1.0",
+  "apiVersion": "^2.2.0",
+  "description": "A custom MVMNT visual element.",
+  "elements": [
+    {
+      "type": "minimal",
+      "entry": "src/minimal.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
+    },
+    {
+      "type": "basic-shape",
+      "entry": "src/basic-shape.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
+    },
+    {
+      "type": "text-display",
+      "entry": "src/text-display.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
+    },
+    {
+      "type": "midi-notes",
+      "entry": "src/midi-notes.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read",
+          "midi.utils"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "midi-spring",
+      "entry": "src/midi-spring.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "audio-reactive",
+      "entry": "src/audio-reactive.ts",
+      "capabilities": {
+        "required": [
+          "audio.raw.read"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "simple-image",
+      "entry": "src/simple-image.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
+    },
+    {
+      "type": "bundled-image",
+      "entry": "src/bundled-image.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
+    },
+    {
+      "type": "image-atlas",
+      "entry": "src/image-atlas.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
+    },
+    {
+      "type": "grid-atlas",
+      "entry": "src/grid-atlas.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
+    }
+  ]
+}
