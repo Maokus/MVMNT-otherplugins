@@ -1,7 +1,7 @@
 {
     "id": "us.maok.patternspack1",
     "name": "Patterns Pack 1",
-    "version": "1.0.6",
+    "version": "1.0.7",
     "apiVersion": "^2.2.0",
     "description": "Animated checkerboard and particle background patterns.",
     "author": "Maokus",

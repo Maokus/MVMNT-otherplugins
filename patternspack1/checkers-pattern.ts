@@ -2,7 +2,7 @@ import { definePluginElement } from '@mvmnt-app/plugin-sdk';
 import { ClipLayer, Rectangle } from '@mvmnt-app/plugin-sdk/render';
 
 
-interface CheckersProps extends Readonly<Record<string, unknown>> {
+type CheckersProps = Readonly<{
     readonly patternWidth: number;
     readonly patternHeight: number;
     readonly squareWidth: number;
@@ -11,7 +11,7 @@ interface CheckersProps extends Readonly<Record<string, unknown>> {
     readonly color2: string;
     readonly motionAngle: number;
     readonly motionSpeed: number;
-}
+}>;
 
 /** Capability-free SDK 2 reference element. */
 export const checkersPattern = definePluginElement<CheckersProps, undefined>({
@@ -34,14 +34,21 @@ export const checkersPattern = definePluginElement<CheckersProps, undefined>({
             { key: 'motionSpeed', label: 'Motion Speed (px/s)', type: 'number', default: 60, step: 1 },
         ] },
     ] }] },
-    render({ props, time }) {
+    render({ props, time, context }) {
         const squareWidth = Math.max(1, props.squareWidth);
         const squareHeight = Math.max(1, props.squareHeight);
         const layoutRect = new Rectangle(0, 0, props.patternWidth, props.patternHeight, { fillColor: undefined });
         layoutRect.setLayoutParticipation('include');
         const angleRad = (props.motionAngle * Math.PI) / 180;
-        const wrapX = ((Math.cos(angleRad) * time.seconds * props.motionSpeed % (squareWidth * 2)) + squareWidth * 2) % (squareWidth * 2);
-        const wrapY = ((Math.sin(angleRad) * time.seconds * props.motionSpeed % (squareHeight * 2)) + squareHeight * 2) % (squareHeight * 2);
+        const integrated = time.seconds === 0 ? null : context.properties.integrate('motionSpeed', {
+            startSeconds: Math.min(0, time.seconds),
+            endSeconds: Math.max(0, time.seconds),
+        });
+        const distance = integrated?.ok && typeof integrated.value === 'number' && Number.isFinite(integrated.value)
+            ? Math.sign(time.seconds) * integrated.value
+            : time.seconds * props.motionSpeed;
+        const wrapX = ((Math.cos(angleRad) * distance % (squareWidth * 2)) + squareWidth * 2) % (squareWidth * 2);
+        const wrapY = ((Math.sin(angleRad) * distance % (squareHeight * 2)) + squareHeight * 2) % (squareHeight * 2);
         const clip = new ClipLayer(props.patternWidth, props.patternHeight);
         clip.setLayoutParticipation('exclude');
         for (let row = -1; row < Math.ceil(props.patternHeight / squareHeight) + 3; row++) {
