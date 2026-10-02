@@ -1,9 +1,9 @@
 {
     "id": "us.maok.midipack1",
     "name": "Midi Pack 1",
-    "version": "1.0.4",
-    "apiVersion": "^2.0.0",
-    "description": "Custom plugin providing 5 elements",
+    "version": "1.0.7",
+    "apiVersion": "^2.2.0",
+    "description": "Five MIDI-driven note displays and piano rolls.",
     "author": "Maokus",
     "elements": [
         {

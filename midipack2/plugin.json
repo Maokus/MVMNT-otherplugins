@@ -1,10 +1,10 @@
 {
     "id": "us.maok.midipack2",
     "name": "Midi Pack 2",
-    "version": "1.0.1",
-    "apiVersion": "^2.0.0",
-    "description": "Custom plugin",
-    "author": "Your Name",
+    "version": "1.0.3",
+    "apiVersion": "^2.2.0",
+    "description": "MIDI-driven image and text carousels and a radar display.",
+    "author": "Maokus",
     "elements": [
         {
             "type": "image-carousel",

@@ -1,9 +1,9 @@
 {
     "id": "us.maok.patternspack1",
     "name": "Patterns Pack 1",
-    "version": "1.0.4",
-    "apiVersion": "^2.0.0",
-    "description": "Custom plugin providing 2 elements",
+    "version": "1.0.6",
+    "apiVersion": "^2.2.0",
+    "description": "Animated checkerboard and particle background patterns.",
     "author": "Maokus",
     "elements": [
         {

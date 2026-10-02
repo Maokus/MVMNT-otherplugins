@@ -33,7 +33,7 @@ export const particlesPattern = definePluginElement<ParticlesProps, undefined>({
         ] },
     ] }] },
     render({ props, time }) {
-        const anchor = new Rectangle(-props.elementWidth / 2, -props.elementHeight / 2, props.elementWidth, props.elementHeight, { fillColor: undefined });
+        const anchor = new Rectangle(-props.elementWidth / 2, -props.elementHeight / 2, props.elementWidth, props.elementHeight, { fillColor: null });
         anchor.setLayoutParticipation('include');
         const angle = props.gravityDirection * Math.PI / 180;
         const vx = Math.cos(angle) * props.gravity;

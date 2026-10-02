@@ -13,6 +13,7 @@ import {
     type RendererProps,
 } from './element-runtime';
 import { withAlpha, pushHitEffects } from './piano-roll-effects';
+import { angularTravel, visibleDuration, angleAtTime } from './circular-speed.mjs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Animation / effect constants
@@ -378,9 +379,8 @@ class CircularPianoRollElement {
         const endAngleRad = startAngleRad + arcSpanRad;
         const triggerAngle = startAngleRad + playheadPosition * arcSpanRad;
 
-        // Range mode keeps the familiar bar-based time window. Speed mode maps
-        // real time directly to angular motion, so a full visible arc takes
-        // arcSpanDeg / angularSpeed seconds to traverse.
+        // Range mode uses bars. Speed mode integrates angular travel so changing
+        // speed does not reposition notes that have already been in motion.
         const speedMode = (p.speedMode as string) ?? 'range';
         const timeWindowBars = Math.max(1, Math.round((p.timeWindowBars as number) ?? 2));
         const rangeWindowDuration = timeWindowBars * beatsPerBar * (60 / bpm);
@@ -420,20 +420,58 @@ class CircularPianoRollElement {
         const cy = 0;
 
         // ── Query notes ──────────────────────────────────────────────────────
-        const queryStart = targetTime - timeWindowDuration;
-        const queryEnd = targetTime + timeWindowDuration;
+        const travel = (from: number, to: number): number | null =>
+            angularTravel(this.runtime.context.properties.integrate, from, to);
+        const pastDuration =
+            speedMode === 'speed' ? visibleDuration(targetTime, -1, arcSpanDeg, timeWindowDuration, travel) : null;
+        const futureDuration =
+            speedMode === 'speed' ? visibleDuration(targetTime, 1, arcSpanDeg, timeWindowDuration, travel) : null;
+        let integratedSpeed = speedMode === 'speed' && pastDuration !== null && futureDuration !== null;
+        const effectTail = Math.max(markerDuration, rippleDuration, animDuration);
+        let queryStart = targetTime - (integratedSpeed ? Math.max(pastDuration!, effectTail) : timeWindowDuration);
+        let queryEnd = targetTime + (integratedSpeed ? futureDuration! : timeWindowDuration);
 
-        const selected = timeline.selectNotes({
+        let selected = timeline.selectNotes({
             trackIds: [p.midiTrackId as string],
             startSeconds: queryStart,
             endSeconds: queryEnd,
         });
-        const notes = selected.ok
+        let notes = selected.ok
             ? selected.value.map((note) => ({ ...note, startTime: note.startSeconds, endTime: note.endSeconds }))
             : [];
 
         // ── Time → angle ─────────────────────────────────────────────────────
-        const timeToAngle = (t: number) => triggerAngle + ((t - targetTime) / timeWindowDuration) * arcSpanRad;
+        const angularPositions = new Map<number, number>();
+        if (integratedSpeed) {
+            for (const note of notes) {
+                for (const time of [note.startTime, note.endTime ?? note.startTime + 0.25]) {
+                    if (angularPositions.has(time)) continue;
+                    const angle = angleAtTime(time, targetTime, triggerAngle, travel);
+                    if (angle === null) {
+                        integratedSpeed = false;
+                        break;
+                    }
+                    angularPositions.set(time, angle);
+                }
+                if (!integratedSpeed) break;
+            }
+        }
+        if (speedMode === 'speed' && !integratedSpeed) {
+            queryStart = targetTime - timeWindowDuration;
+            queryEnd = targetTime + timeWindowDuration;
+            selected = timeline.selectNotes({
+                trackIds: [p.midiTrackId as string],
+                startSeconds: queryStart,
+                endSeconds: queryEnd,
+            });
+            notes = selected.ok
+                ? selected.value.map((note) => ({ ...note, startTime: note.startSeconds, endTime: note.endSeconds }))
+                : [];
+        }
+        const timeToAngle = (t: number) =>
+            integratedSpeed
+                ? angularPositions.get(t) ?? triggerAngle
+                : triggerAngle + ((t - targetTime) / timeWindowDuration) * arcSpanRad;
 
         const effects: RenderObject[] = [];
 

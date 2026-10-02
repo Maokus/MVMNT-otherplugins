@@ -1,10 +1,10 @@
 {
     "id": "us.maok.pixelperfect",
     "name": "Pixel Perfect",
-    "version": "1.0.3",
-    "apiVersion": "^2.0.0",
-    "description": "Plugin of elements based around pixel art!",
-    "author": "Your Name",
+    "version": "1.0.5",
+    "apiVersion": "^2.2.0",
+    "description": "Pixel art textures and a MIDI piano roll.",
+    "author": "Maokus",
     "elements": [
         {
             "type": "ditherator",

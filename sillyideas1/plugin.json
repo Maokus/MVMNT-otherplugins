@@ -1,15 +1,31 @@
 {
   "id": "us.maok.sillyideas1",
   "name": "Silly Ideas 1",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "apiVersion": "^2.0.0",
-  "description": "A sorted raw-PCM waveform display.",
+  "description": "A sorted raw-PCM waveform display and rhythmic MIDI-negative experiments.",
   "author": "MVMNT",
   "elements": [
     {
       "type": "sorted-waveform",
       "entry": "src/sorted-waveform.ts",
       "capabilities": { "required": ["audio.raw.read"], "optional": [] }
+    },
+    {
+      "type": "mismatched-negatives",
+      "entry": "src/mismatched-negatives.ts",
+      "capabilities": {
+        "required": ["timeline.read", "timing.conversion"],
+        "optional": []
+      }
+    },
+    {
+      "type": "ball-jar",
+      "entry": "src/ball-jar.ts",
+      "capabilities": {
+        "required": ["timeline.read", "timing.conversion"],
+        "optional": []
+      }
     }
   ]
 }

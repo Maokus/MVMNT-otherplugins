@@ -21,8 +21,8 @@ export const checkersPattern = definePluginElement<CheckersProps, undefined>({
         { id: 'checkerAppearance', label: 'Appearance', collapsed: false, description: 'Checkerboard colors and square size', properties: [
             { key: 'patternWidth', label: 'Width', type: 'number', default: 640, step: 1 },
             { key: 'patternHeight', label: 'Height', type: 'number', default: 360, step: 1 },
-            { key: 'squareWidth', label: 'Square Width', type: 'number', default: 80, step: 1 },
-            { key: 'squareHeight', label: 'Square Height', type: 'number', default: 80, step: 1 },
+            { key: 'squareWidth', label: 'Square Width', type: 'number', default: 80, min: 1, step: 1 },
+            { key: 'squareHeight', label: 'Square Height', type: 'number', default: 80, min: 1, step: 1 },
             { key: 'color1', label: 'Color 1', type: 'colorAlpha', default: '#222222FF' },
             { key: 'color2', label: 'Color 2', type: 'colorAlpha', default: '#444444FF' },
         ], presets: [
@@ -35,18 +35,20 @@ export const checkersPattern = definePluginElement<CheckersProps, undefined>({
         ] },
     ] }] },
     render({ props, time }) {
+        const squareWidth = Math.max(1, props.squareWidth);
+        const squareHeight = Math.max(1, props.squareHeight);
         const layoutRect = new Rectangle(0, 0, props.patternWidth, props.patternHeight, { fillColor: undefined });
         layoutRect.setLayoutParticipation('include');
         const angleRad = (props.motionAngle * Math.PI) / 180;
-        const wrapX = ((Math.cos(angleRad) * time.seconds * props.motionSpeed % (props.squareWidth * 2)) + props.squareWidth * 2) % (props.squareWidth * 2);
-        const wrapY = ((Math.sin(angleRad) * time.seconds * props.motionSpeed % (props.squareHeight * 2)) + props.squareHeight * 2) % (props.squareHeight * 2);
+        const wrapX = ((Math.cos(angleRad) * time.seconds * props.motionSpeed % (squareWidth * 2)) + squareWidth * 2) % (squareWidth * 2);
+        const wrapY = ((Math.sin(angleRad) * time.seconds * props.motionSpeed % (squareHeight * 2)) + squareHeight * 2) % (squareHeight * 2);
         const clip = new ClipLayer(props.patternWidth, props.patternHeight);
         clip.setLayoutParticipation('exclude');
-        for (let row = -1; row < Math.ceil(props.patternHeight / props.squareHeight) + 3; row++) {
-            for (let col = -1; col < Math.ceil(props.patternWidth / props.squareWidth) + 3; col++) {
+        for (let row = -1; row < Math.ceil(props.patternHeight / squareHeight) + 3; row++) {
+            for (let col = -1; col < Math.ceil(props.patternWidth / squareWidth) + 3; col++) {
                 const color = (row + col) % 2 !== 0 ? props.color2 : props.color1;
                 if (!color || color.endsWith('00')) continue;
-                clip.addChild(new Rectangle(col * props.squareWidth - wrapX, row * props.squareHeight - wrapY, props.squareWidth, props.squareHeight, { fillColor: color }).setLayoutParticipation('exclude'));
+                clip.addChild(new Rectangle(col * squareWidth - wrapX, row * squareHeight - wrapY, squareWidth, squareHeight, { fillColor: color }).setLayoutParticipation('exclude'));
             }
         }
         return [layoutRect, clip];

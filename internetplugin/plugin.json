@@ -1,0 +1,19 @@
+{
+  "id": "us.maok.internetplugin",
+  "name": "Internetplugin",
+  "version": "0.1.0",
+  "apiVersion": "^2.2.0",
+  "description": "A custom MVMNT visual element.",
+  "elements": [
+    {
+      "type": "internet-yippee",
+      "entry": "src/internet-yippee.ts",
+      "capabilities": {
+        "required": [
+          "audio.raw.read"
+        ],
+        "optional": []
+      }
+    }
+  ]
+}
