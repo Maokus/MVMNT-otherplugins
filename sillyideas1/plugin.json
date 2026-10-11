@@ -26,6 +26,14 @@
         "required": ["timeline.read", "timing.conversion"],
         "optional": []
       }
+    },
+    {
+      "type": "dissolver",
+      "entry": "src/dissolver.ts",
+      "capabilities": {
+        "required": ["timeline.read", "timing.conversion"],
+        "optional": []
+      }
     }
   ]
 }

@@ -5,7 +5,7 @@ import {
   type RenderObject,
 } from "@mvmnt-app/plugin-sdk/render";
 import { clampNumber, resolveJarBounds, timeUnitIndex } from "./ball-jar-logic";
-import { parseTimeUnitBars } from "./mismatched-negatives-logic";
+import { parseTimeUnitBars, TIME_UNIT_OPTIONS } from "./musical-grid";
 
 const MAX_BALLS = 128;
 
@@ -27,12 +27,7 @@ export const ballJar = definePluginElement({
         group("source", "MIDI Source", [
           prop.midiTrack("midiTrackId", "MIDI Track"),
           prop.number("seed", "Seed", 1, { step: 1 }),
-          prop.select("timeUnitBars", "Clear Every", "1", [
-            { label: "1/2 bar", value: "0.5" },
-            { label: "1 bar", value: "1" },
-            { label: "2 bars", value: "2" },
-            { label: "4 bars", value: "4" },
-          ]),
+          prop.select("timeUnitBars", "Clear Every", "1", TIME_UNIT_OPTIONS),
           prop.number("maxBalls", "Maximum Balls", 64, {
             min: 1,
             max: MAX_BALLS,

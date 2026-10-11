@@ -6,12 +6,16 @@ import {
   buildMusicalSlots,
   fitExitTiming,
   hasMidiOnsetInRange,
-  parseTimeUnitBars,
   resolveSlotSettlement,
   staggerDelay,
   subdivisionBeats,
   type MusicalSlot,
 } from "./mismatched-negatives-logic";
+import {
+  parseTimeUnitBars,
+  TIME_UNIT_OPTIONS,
+  timeUnitStartBeat,
+} from "./musical-grid";
 
 const EASING_OPTIONS = [
   { label: "Linear", value: "linear" },
@@ -106,12 +110,7 @@ export const mismatchedNegatives = definePluginElement({
             "1/16",
             SUBDIVISION_OPTIONS,
           ),
-          prop.select("timeUnitBars", "Time Unit", "1", [
-            { label: "1/2 bar", value: "0.5" },
-            { label: "1 bar", value: "1" },
-            { label: "2 bars", value: "2" },
-            { label: "4 bars", value: "4" },
-          ]),
+          prop.select("timeUnitBars", "Time Unit", "1", TIME_UNIT_OPTIONS),
         ]),
         group("animation", "Animation", [
           prop.number("slideInDuration", "Slide In Duration (s)", 0.12, {
@@ -214,17 +213,17 @@ export const mismatchedNegatives = definePluginElement({
       (signature.value.numerator * 4) / signature.value.denominator;
     const beatsPerTimeUnit =
       beatsPerBar * parseTimeUnitBars(props.timeUnitBars);
-    const timeUnitStartBeat =
-      Math.floor(beatPosition.value / beatsPerTimeUnit) * beatsPerTimeUnit;
-    const previousTimeUnitStartBeat = timeUnitStartBeat - beatsPerTimeUnit;
+    const unitStartBeat = timeUnitStartBeat(
+      beatPosition.value,
+      beatsPerTimeUnit,
+    );
+    const previousTimeUnitStartBeat = unitStartBeat - beatsPerTimeUnit;
     const slots = buildMusicalSlots(
       beatsPerTimeUnit,
       subdivisionBeats(props.subdivision),
     );
-    const timeUnitStart = timing.beatsToSeconds(timeUnitStartBeat);
-    const timeUnitEnd = timing.beatsToSeconds(
-      timeUnitStartBeat + beatsPerTimeUnit,
-    );
+    const timeUnitStart = timing.beatsToSeconds(unitStartBeat);
+    const timeUnitEnd = timing.beatsToSeconds(unitStartBeat + beatsPerTimeUnit);
     const previousTimeUnitStart = timing.beatsToSeconds(
       previousTimeUnitStartBeat,
     );
@@ -257,10 +256,8 @@ export const mismatchedNegatives = definePluginElement({
     };
 
     for (const [slotIndex, slot] of slots.entries()) {
-      const slotStart = timing.beatsToSeconds(
-        timeUnitStartBeat + slot.startBeat,
-      );
-      const slotEnd = timing.beatsToSeconds(timeUnitStartBeat + slot.endBeat);
+      const slotStart = timing.beatsToSeconds(unitStartBeat + slot.startBeat);
+      const slotEnd = timing.beatsToSeconds(unitStartBeat + slot.endBeat);
       if (!slotStart.ok || !slotEnd.ok) continue;
       const blocked = hasMidiOnsetInRange(
         notes,
@@ -273,7 +270,7 @@ export const mismatchedNegatives = definePluginElement({
         exitTiming.staggerSeconds,
       );
       let settlement: number;
-      if (timeUnitStartBeat <= 0) {
+      if (unitStartBeat <= 0) {
         settlement = blocked
           ? 0
           : applyEasing(
