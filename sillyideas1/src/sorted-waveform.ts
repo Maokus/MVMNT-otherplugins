@@ -65,11 +65,12 @@ function resample(values: number[], count: number): number[] {
 
 function damp(values: number[], radius: number): number[] {
   if (!radius) return values;
+  const sums = new Float64Array(values.length + 1);
+  for (let index = 0; index < values.length; index += 1)
+    sums[index + 1] = sums[index] + (values[index] ?? 0);
   return values.map((_, index) => {
     const end = Math.min(values.length, index + radius + 1);
-    let total = 0;
-    for (let next = index; next < end; next += 1) total += values[next] ?? 0;
-    return total / (end - index);
+    return (sums[end] - sums[index]) / (end - index);
   });
 }
 
@@ -158,25 +159,25 @@ export const sortedWaveform = definePluginElement({
           prop.audioTrack("audioTrackId", "Audio Track"),
         ]),
         group("waveform", "Sorted Waveform", [
-          prop.number("width", "Width (px)", 800, { min: 1, step: 1 }),
+          prop.number("width", "Width (px)", 800, { min: 1, max: 8192, step: 1 }),
           prop.number("height", "Height (px)", 300, { min: 1, step: 1 }),
           prop.number("sampleCount", "Sample Count", 4096, {
-            min: 256,
+            min: 2,
             max: MAX_SAMPLE_COUNT,
-            step: 256,
+            step: 1,
           }),
           prop.number("startOffset", "Start Offset", 0.5, {
             min: 0,
             max: 1,
             step: 0.01,
           }),
-          prop.number("gain", "Gain", 1, { min: 0, max: 10, step: 0.1 }),
+          prop.number("gain", "Gain", 1, { min: 0, step: 0.1 }),
           prop.number("density", "Density", 1, {
-            min: 0.1,
+            min: 0,
             max: 1,
             step: 0.05,
           }),
-          prop.number("damp", "Damp", 0, { min: 0, max: 64, step: 1 }),
+          prop.number("damp", "Damp", 0, { min: 0, max: MAX_SAMPLE_COUNT, step: 1 }),
           prop.select("channel", "Channel", "left", [
             { label: "Left", value: "left" },
             { label: "Right", value: "right" },
@@ -202,7 +203,6 @@ export const sortedWaveform = definePluginElement({
           prop.colorAlpha("backgroundColor", "Background", "#0F172A00"),
           prop.number("lineWidth", "Line Width (px)", 2, {
             min: 0,
-            max: 10,
             step: 0.5,
           }),
         ]),
@@ -211,7 +211,7 @@ export const sortedWaveform = definePluginElement({
   },
   render({ props, time, context }): readonly RenderObject[] {
     const width = clamp(props.width, 1, 8192, 800);
-    const height = clamp(props.height, 1, 8192, 300);
+    const height = clamp(props.height, 1, Infinity, 300);
     const objects: RenderObject[] = [
       new Rectangle(0, 0, width, height, {
         fillColor:
@@ -221,7 +221,7 @@ export const sortedWaveform = definePluginElement({
       }),
     ];
     const color = typeof props.color === "string" ? props.color : "#22D3EEFF";
-    const lineWidth = clamp(props.lineWidth, 0, 10, 2);
+    const lineWidth = clamp(props.lineWidth, 0, Infinity, 2);
     const flat = () =>
       renderSeries(
         objects,
@@ -242,7 +242,7 @@ export const sortedWaveform = definePluginElement({
       return objects;
     }
     const sampleCount = Math.round(
-      clamp(props.sampleCount, 256, MAX_SAMPLE_COUNT, 4096),
+      clamp(props.sampleCount, 2, MAX_SAMPLE_COUNT, 4096),
     );
     const startOffset = clamp(props.startOffset, 0, 1, 0.5);
     const windowSeconds = sampleCount / metadata.value.sampleRate;
@@ -271,15 +271,15 @@ export const sortedWaveform = definePluginElement({
     );
     // Sorting is deliberately after the channel transform: this is a frame's amplitude distribution, not a timeline waveform.
     const sorted = raw.sort((a, b) => a - b);
-    const density = clamp(props.density, 0.1, 1, 1);
+    const density = clamp(props.density, 0, 1, 1);
     const displayCount = Math.max(2, Math.round(width * density));
-    const gain = clamp(props.gain, 0, 10, 1);
+    const gain = clamp(props.gain, 0, Infinity, 1);
     const shaped = applySide(
       damp(
         resample(sorted, displayCount).map((value) =>
           Math.max(-1, Math.min(1, value * gain)),
         ),
-        Math.round(clamp(props.damp, 0, 64, 0)),
+        Math.round(clamp(props.damp, 0, MAX_SAMPLE_COUNT, 0)),
       ),
       props.side as Side,
     );

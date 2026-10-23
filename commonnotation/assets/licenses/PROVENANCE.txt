@@ -1,0 +1,9 @@
+Commonnotation vector glyph data is derived from Bravura by Steinberg Media Technologies GmbH.
+Source repository: https://github.com/steinbergmedia/bravura
+Pinned commit: 37b194378b710cc40e406ab6c4b07608bb9548ae
+Sources: redist/otf/Bravura.otf and redist/Bravura.json
+License: SIL Open Font License 1.1; see Bravura-OFL.txt alongside this file.
+Generated subset name: Commonnotation Glyphs (not a redistributed font named Bravura).
+Conversion: scripts/generate-glyphs.mjs using opentype.js 1.3.4.
+Outlines are converted to SDK Bezier commands; one em is four staff spaces, with Y inverted for canvas.
+Only selected outlines are packaged. Original source font and metadata remain in vendor/ for reproducibility.

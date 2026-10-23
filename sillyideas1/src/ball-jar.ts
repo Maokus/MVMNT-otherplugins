@@ -36,35 +36,29 @@ export const ballJar = definePluginElement({
         ]),
         group("jar", "Jar", [
           prop.number("width", "Width (px)", 420, {
-            min: 80,
-            max: 1600,
+            min: 1,
             step: 1,
           }),
           prop.number("height", "Height (px)", 420, {
-            min: 80,
-            max: 1600,
+            min: 1,
             step: 1,
           }),
           prop.number("wallThickness", "Wall Thickness (px)", 12, {
             min: 1,
-            max: 80,
             step: 1,
           }),
           prop.number("ballRadius", "Ball Radius (px)", 14, {
             min: 2,
-            max: 80,
             step: 1,
           }),
         ]),
         group("physics", "Physics", [
           prop.number("gravity", "Gravity", 900, {
             min: 0,
-            max: 4000,
             step: 10,
           }),
           prop.number("airDrag", "Air Drag", 0.12, {
             min: 0,
-            max: 5,
             step: 0.01,
           }),
           prop.number("restitution", "Bounciness", 0.35, {
@@ -74,12 +68,10 @@ export const ballJar = definePluginElement({
           }),
           prop.number("friction", "Floor Friction", 4, {
             min: 0,
-            max: 20,
             step: 0.1,
           }),
           prop.number("dropSpeed", "Drop Speed", 40, {
             min: 0,
-            max: 1000,
             step: 5,
           }),
         ]),
@@ -107,8 +99,8 @@ export const ballJar = definePluginElement({
       const active = new Uint8Array(state.active);
       const positions = new Float32Array(state.positions);
       const velocities = new Float32Array(state.velocities);
-      const width = clampNumber(props.width, 80, 1600, 420);
-      const height = clampNumber(props.height, 80, 1600, 420);
+      const width = clampNumber(props.width, 1, Infinity, 420);
+      const height = clampNumber(props.height, 1, Infinity, 420);
       const wallThickness = clampNumber(
         props.wallThickness,
         1,
@@ -124,15 +116,15 @@ export const ballJar = definePluginElement({
       const maxBalls = Math.round(
         clampNumber(props.maxBalls, 1, MAX_BALLS, 64),
       );
-      const gravity = clampNumber(props.gravity, 0, 4000, 900);
+      const gravity = clampNumber(props.gravity, 0, Infinity, 900);
       const restitution = clampNumber(props.restitution, 0, 1, 0.35);
       const drag = Math.exp(
-        -clampNumber(props.airDrag, 0, 5, 0.12) * deltaSeconds,
+        -clampNumber(props.airDrag, 0, Infinity, 0.12) * deltaSeconds,
       );
       const floorFriction = Math.exp(
-        -clampNumber(props.friction, 0, 20, 4) * deltaSeconds,
+        -clampNumber(props.friction, 0, Infinity, 4) * deltaSeconds,
       );
-      const dropSpeed = clampNumber(props.dropSpeed, 0, 1000, 40);
+      const dropSpeed = clampNumber(props.dropSpeed, 0, Infinity, 40);
       const signature = context.timing?.getTimeSignature();
       const stepEndBeat = context.timing?.secondsToBeats(
         time.seconds + deltaSeconds,
@@ -319,8 +311,8 @@ export const ballJar = definePluginElement({
     };
   },
   render({ props, resources, simulation }) {
-    const width = clampNumber(props.width, 80, 1600, 420);
-    const height = clampNumber(props.height, 80, 1600, 420);
+    const width = clampNumber(props.width, 1, Infinity, 420);
+    const height = clampNumber(props.height, 1, Infinity, 420);
     const wallThickness = clampNumber(
       props.wallThickness,
       1,

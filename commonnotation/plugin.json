@@ -1,0 +1,54 @@
+{
+  "id": "us.maok.commonnotation",
+  "name": "Common Notation",
+  "version": "1.1.0",
+  "apiVersion": "^2.0.0",
+  "description": "Composable musical notation and an animated paged score.",
+  "author": "Maok",
+  "elements": [
+    {
+      "type": "commonnotation-score",
+      "entry": "src/score.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "commonnotation-glyph-atlas",
+      "entry": "src/glyph-atlas.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
+    },
+    {
+      "type": "commonnotation-note-workshop",
+      "entry": "src/note-workshop.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
+    },
+    {
+      "type": "commonnotation-layout-study",
+      "entry": "src/layout-study.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
+    },
+    {
+      "type": "commonnotation-orbit",
+      "entry": "src/notation-orbit.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read"
+        ],
+        "optional": []
+      }
+    }
+  ]
+}

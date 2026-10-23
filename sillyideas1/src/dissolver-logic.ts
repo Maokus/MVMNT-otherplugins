@@ -40,12 +40,23 @@ export function anchorCell(
   };
 }
 
-export type ExpansionShape = "circle" | "diamond" | "noisy";
+export type ExpansionShape =
+  | "circle"
+  | "diamond"
+  | "noisy"
+  | "square"
+  | "cross"
+  | "star"
+  | "spiral"
+  | "horizontal"
+  | "vertical";
 
 export interface ExpansionField {
   readonly shape: ExpansionShape;
-  /** Greater than one advances the front earlier; every speed reaches the edge at the boundary. */
+  /** Multiplier on a fixed cells-per-second rate, independent of unit length and grid size. */
   readonly speed: number;
+  readonly burstDistance: number;
+  readonly burstDecaySeconds: number;
   /** Width of the eased edge, measured in grid cells. */
   readonly gradient: number;
   readonly noiseAmount: number;
@@ -53,10 +64,12 @@ export interface ExpansionField {
 }
 
 export const DEFAULT_EXPANSION_FIELD: ExpansionField = {
-  shape: "circle",
+  shape: "noisy",
   speed: 1,
+  burstDistance: 1.5,
+  burstDecaySeconds: 0.2,
   gradient: 0.75,
-  noiseAmount: 0.8,
+  noiseAmount: 2.75,
   noiseScale: 0.55,
 };
 
@@ -112,7 +125,16 @@ export function fieldDistance(
   const dy = Math.abs(row - onset.row);
   if (dx === 0 && dy === 0) return 0;
   if (field.shape === "diamond") return dx + dy;
+  if (field.shape === "square") return Math.max(dx, dy);
+  if (field.shape === "cross") return Math.min(dx + 2.5 * dy, 2.5 * dx + dy);
+  if (field.shape === "horizontal") return Math.hypot(dx * 0.6, dy * 1.5);
+  if (field.shape === "vertical") return Math.hypot(dx * 1.5, dy * 0.6);
   const distance = Math.hypot(dx, dy);
+  const angle = Math.atan2(row - onset.row, column - onset.column);
+  if (field.shape === "star")
+    return Math.max(1, distance * (1 - 0.35 * Math.cos(5 * angle)));
+  if (field.shape === "spiral")
+    return Math.max(1, distance + 1.5 * Math.sin(3 * angle - 0.8 * distance));
   if (field.shape !== "noisy") return distance;
   return Math.max(
     1,
@@ -122,39 +144,29 @@ export function fieldDistance(
   );
 }
 
-function distanceToFarthestCorner(
-  onset: GridOnset,
-  columns: number,
-  rows: number,
+/** Starts faster, then approaches a constant travel rate. */
+export function expansionFront(
+  elapsedSeconds: number,
   field: ExpansionField,
 ): number {
-  const dx = Math.max(onset.column, columns - 1 - onset.column);
-  const dy = Math.max(onset.row, rows - 1 - onset.row);
-  return field.shape === "diamond"
-    ? dx + dy
-    : Math.hypot(dx, dy) + (field.shape === "noisy" ? field.noiseAmount : 0);
+  const elapsed = Math.max(0, elapsedSeconds);
+  const burst =
+    field.burstDistance *
+    (1 - Math.exp(-elapsed / Math.max(1e-6, field.burstDecaySeconds)));
+  return 1 + 12 * field.speed * elapsed + burst;
 }
 
-/** A note's front reaches the farthest grid circle at the unit boundary. */
 function eventScale(
   column: number,
   row: number,
   onset: GridOnset,
   atSeconds: number,
-  unitEndSeconds: number,
-  columns: number,
-  rows: number,
   field: ExpansionField,
 ): number {
   if (atSeconds <= onset.seconds) return 1;
   const distance = fieldDistance(column, row, onset, field);
   if (distance < 1e-9) return 1;
-  const farthest = distanceToFarthestCorner(onset, columns, rows, field);
-  if (farthest < 1e-9) return 1;
-  const totalTime = Math.max(1e-9, unitEndSeconds - onset.seconds);
-  const elapsedFraction = clamp01((atSeconds - onset.seconds) / totalTime);
-  const waveProgress = 1 - (1 - elapsedFraction) ** field.speed;
-  const front = 1 + (farthest + field.gradient - 1) * waveProgress;
+  const front = expansionFront(atSeconds - onset.seconds, field);
   if (field.gradient <= 0) return front >= distance ? 0 : 1;
   return 1 - easeInOut((front - distance) / field.gradient);
 }
@@ -165,28 +177,13 @@ export function dissolvedScale(
   row: number,
   onsets: readonly GridOnset[],
   atSeconds: number,
-  unitEndSeconds: number,
-  columns: number,
-  rows: number,
   field: ExpansionField = DEFAULT_EXPANSION_FIELD,
 ): number {
   let scale = 1;
   for (const onset of onsets) {
     if (onset.seconds > atSeconds) continue;
     if (onset.column === column && onset.row === row) return 1;
-    scale = Math.min(
-      scale,
-      eventScale(
-        column,
-        row,
-        onset,
-        atSeconds,
-        unitEndSeconds,
-        columns,
-        rows,
-        field,
-      ),
-    );
+    scale = Math.min(scale, eventScale(column, row, onset, atSeconds, field));
   }
   return scale;
 }
@@ -249,16 +246,7 @@ export function cellScale(args: {
   )
     return 1;
 
-  const current = dissolvedScale(
-    column,
-    row,
-    currentOnsets,
-    nowSeconds,
-    currentEndSeconds,
-    columns,
-    rows,
-    field,
-  );
+  const current = dissolvedScale(column, row, currentOnsets, nowSeconds, field);
   if (previousStartSeconds >= boundarySeconds || previousOnsets.length === 0)
     return current;
 
@@ -272,16 +260,19 @@ export function cellScale(args: {
     columns * rows > 1
       ? (timing.staggerSeconds * cellIndex) / (columns * rows - 1)
       : 0;
-  const elapsed = nowSeconds - boundarySeconds - delay;
+  const returnStart = boundarySeconds + delay;
+  if (nowSeconds < returnStart)
+    return Math.min(
+      current,
+      dissolvedScale(column, row, previousOnsets, nowSeconds, field),
+    );
+  const elapsed = nowSeconds - returnStart;
   if (elapsed >= timing.durationSeconds) return current;
   const previous = dissolvedScale(
     column,
     row,
     previousOnsets,
-    boundarySeconds,
-    boundarySeconds,
-    columns,
-    rows,
+    returnStart,
     field,
   );
   const recovery =

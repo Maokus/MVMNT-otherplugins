@@ -34,6 +34,14 @@
         "required": ["timeline.read", "timing.conversion"],
         "optional": []
       }
+    },
+    {
+      "type": "grid-gravity",
+      "entry": "src/grid-gravity.ts",
+      "capabilities": {
+        "required": ["timeline.read", "timing.conversion"],
+        "optional": []
+      }
     }
   ]
 }

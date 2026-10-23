@@ -115,7 +115,6 @@ export const mismatchedNegatives = definePluginElement({
         group("animation", "Animation", [
           prop.number("slideInDuration", "Slide In Duration (s)", 0.12, {
             min: 0,
-            max: 10,
             step: 0.01,
           }),
           prop.select(
@@ -126,12 +125,10 @@ export const mismatchedNegatives = definePluginElement({
           ),
           prop.number("slideOutDuration", "Slide Out Duration (s)", 0.2, {
             min: 0,
-            max: 10,
             step: 0.01,
           }),
           prop.number("slideOutStagger", "Slide Out Stagger (s)", 0.2, {
             min: 0,
-            max: 10,
             step: 0.01,
           }),
           prop.select(
@@ -143,28 +140,23 @@ export const mismatchedNegatives = definePluginElement({
         ]),
         group("layout", "Layout", [
           prop.number("width", "Width (px)", 800, {
-            min: 32,
-            max: 8192,
+            min: 1,
             step: 1,
           }),
           prop.number("height", "Height (px)", 300, {
-            min: 32,
-            max: 8192,
+            min: 1,
             step: 1,
           }),
           prop.number("rowGap", "Row Gap (px)", 18, {
             min: 0,
-            max: 512,
             step: 1,
           }),
           prop.number("cellGap", "Cell Gap (px)", 0, {
             min: 0,
-            max: 64,
             step: 0.5,
           }),
           prop.number("misalignment", "Misalignment (px)", 32, {
             min: 0,
-            max: 512,
             step: 1,
           }),
         ]),
@@ -178,14 +170,14 @@ export const mismatchedNegatives = definePluginElement({
     ],
   },
   render({ props, time, context }): readonly RenderObject[] {
-    const width = clamp(props.width, 32, 8192, 800);
-    const height = clamp(props.height, 32, 8192, 300);
-    const rowGap = clamp(props.rowGap, 0, height - 2, 18);
-    const cellGap = clamp(props.cellGap, 0, width, 0);
-    const misalignment = clamp(props.misalignment, 0, height, 32);
-    const slideInDuration = clamp(props.slideInDuration, 0, 10, 0.12);
-    const slideOutDuration = clamp(props.slideOutDuration, 0, 10, 0.2);
-    const slideOutStagger = clamp(props.slideOutStagger, 0, 10, 0.2);
+    const width = clamp(props.width, 1, Infinity, 800);
+    const height = clamp(props.height, 1, Infinity, 300);
+    const rowGap = clamp(props.rowGap, 0, Math.max(0, height - 2), 18);
+    const cellGap = clamp(props.cellGap, 0, Infinity, 0);
+    const misalignment = clamp(props.misalignment, 0, Infinity, 32);
+    const slideInDuration = clamp(props.slideInDuration, 0, Infinity, 0.12);
+    const slideOutDuration = clamp(props.slideOutDuration, 0, Infinity, 0.2);
+    const slideOutStagger = clamp(props.slideOutStagger, 0, Infinity, 0.2);
     const color = typeof props.color === "string" ? props.color : "#F8FAFCFF";
     const backgroundColor =
       typeof props.backgroundColor === "string"
