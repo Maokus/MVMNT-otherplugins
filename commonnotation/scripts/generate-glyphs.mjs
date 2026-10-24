@@ -24,6 +24,9 @@ const names = {
   restQuarter: 0xe4e5,
   rest8th: 0xe4e6,
   rest16th: 0xe4e7,
+  dynamicPiano: 0xe520,
+  dynamicForte: 0xe522,
+  dynamicMezzo: 0xe521,
 };
 for (let i = 0; i < 10; i++) names[`timeSig${i}`] = 0xe080 + i;
 const glyphs = {};

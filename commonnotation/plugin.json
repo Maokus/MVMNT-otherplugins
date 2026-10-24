@@ -1,7 +1,7 @@
 {
   "id": "us.maok.commonnotation",
   "name": "Common Notation",
-  "version": "1.1.0",
+  "version": "1.3.0",
   "apiVersion": "^2.0.0",
   "description": "Composable musical notation and an animated paged score.",
   "author": "Maok",
@@ -10,10 +10,8 @@
       "type": "commonnotation-score",
       "entry": "src/score.ts",
       "capabilities": {
-        "required": [
-          "timeline.read"
-        ],
-        "optional": []
+        "required": ["timeline.read"],
+        "optional": ["timing.conversion"]
       }
     },
     {
@@ -44,9 +42,31 @@
       "type": "commonnotation-orbit",
       "entry": "src/notation-orbit.ts",
       "capabilities": {
-        "required": [
-          "timeline.read"
-        ],
+        "required": ["timeline.read"],
+        "optional": []
+      }
+    },
+    {
+      "type": "commonnotation-schematic-structure",
+      "entry": "src/schematic-structure.ts",
+      "capabilities": {
+        "required": ["timeline.read"],
+        "optional": ["timing.conversion"]
+      }
+    },
+    {
+      "type": "commonnotation-engraving-lab",
+      "entry": "src/engraving-lab.ts",
+      "capabilities": {
+        "required": [],
+        "optional": []
+      }
+    },
+    {
+      "type": "commonnotation-utility-lab",
+      "entry": "src/utility-lab.ts",
+      "capabilities": {
+        "required": [],
         "optional": []
       }
     }

@@ -1,0 +1,22 @@
+{
+  "name": "us.maok.schematicsnscores",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "mvmnt-plugin dev",
+    "build": "mvmnt-plugin build",
+    "check": "mvmnt-plugin check",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test tests/*.test.mjs",
+    "review": "node scripts/review.mjs"
+  },
+  "dependencies": {
+    "@mvmnt-app/plugin-sdk": "file:../../MVMNT/packages/plugin-sdk"
+  },
+  "devDependencies": {
+    "@mvmnt-app/plugin-tools": "file:../../MVMNT/packages/plugin-tools",
+    "typescript": "^5.9.3",
+    "@napi-rs/canvas": "^1.0.13"
+  }
+}

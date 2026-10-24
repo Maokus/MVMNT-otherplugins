@@ -12,10 +12,31 @@ import {
   type ScoreEvent,
   type ScoreNote,
 } from "./model";
+import { measureNodes } from "./geometry";
+import { finite } from "./midi";
+import type { KeySignature } from "./keys";
+import { buildKeySignature, beamGroups } from "./engraving";
 export interface LayoutNode {
   id: string;
   role: string;
   rotation?: number;
+  originX?: number;
+  originY?: number;
+  scaleX?: number;
+  scaleY?: number;
+  metadata?: Readonly<Record<string, unknown>>;
+  timing?: readonly ScoreNote[];
+  color?: string;
+  opacity?: number;
+  text?: { value: string; font: string };
+  connection?: {
+    from: { id: string; anchor: string };
+    to: { id: string; anchor: string };
+    kind: "beam" | "tie";
+    thickness?: number;
+    offset?: number;
+    fraction?: number;
+  };
   x: number;
   y: number;
   bounds: Bounds;
@@ -39,6 +60,8 @@ export interface LayoutOptions {
   measuresPerSystem: number;
   beatSpacing?: number;
   systemGap?: number;
+  beaming?: boolean;
+  registry?: GlyphRegistry;
 }
 const box = (x = 0, y = 0, width = 0, height = 0): Bounds => ({
   x,
@@ -96,27 +119,19 @@ export function groupNode(
   x = 0,
   y = 0,
 ): LayoutNode {
-  const minX = Math.min(0, ...children.map((n) => n.x + n.bounds.x)),
-    minY = Math.min(0, ...children.map((n) => n.y + n.bounds.y));
-  const maxX = Math.max(
-      0,
-      ...children.map((n) => n.x + n.bounds.x + n.bounds.width),
-    ),
-    maxY = Math.max(
-      0,
-      ...children.map((n) => n.y + n.bounds.y + n.bounds.height),
-    );
+  const bounds = measureNodes(children);
   return {
     id,
     role,
     x,
     y,
     children,
-    bounds: box(minX, minY, maxX - minX, maxY - minY),
+    bounds,
     anchors: {},
   };
 }
 export function buildStaff(id: string, width: number): LayoutNode {
+  finite(width, "Staff width", 0, 1000000);
   return groupNode(
     id,
     "staff",
@@ -132,6 +147,7 @@ export function buildNote(
   displacement = 0,
   accidentalColumn = 0,
   stem?: { up: boolean; tipY: number; visible: boolean },
+  registry: GlyphRegistry = defaultGlyphs,
 ): LayoutNode {
   const d = event.duration,
     pos = staffPosition(note.pitch, clef),
@@ -142,8 +158,10 @@ export function buildNote(
       : d.denominator === 2
         ? "noteheadHalf"
         : "noteheadBlack";
-  const children = [glyphNode(`${note.id}:head`, head, 0, 0, "notehead")];
-  const headGlyph = defaultGlyphs.get(head),
+  const children = [
+    glyphNode(`${note.id}:head`, head, 0, 0, "notehead", registry),
+  ];
+  const headGlyph = registry.get(head),
     w = headGlyph.advance;
   const up = stem?.up ?? pos < 4;
   if (d.denominator !== 1 && stem?.visible !== false) {
@@ -175,6 +193,7 @@ export function buildNote(
           anchor.x,
           tip,
           "flag",
+          registry,
         ),
       );
   }
@@ -186,6 +205,7 @@ export function buildNote(
         w + 0.4,
         pos % 2 === 0 ? -0.5 : 0,
         "dot",
+        registry,
       ),
     );
   if (note.accidental !== undefined)
@@ -200,6 +220,7 @@ export function buildNote(
         -1.3 - accidentalColumn * 1.1,
         0,
         "accidental",
+        registry,
       ),
     );
   for (let p = 10; p <= pos; p += 2)
@@ -231,7 +252,11 @@ export function buildNote(
   node.anchors = { head: { x: 0, y: 0 }, tie: { x: w / 2, y: 1 } };
   return node;
 }
-export function buildChord(event: ScoreEvent, clef: Clef): LayoutNode {
+export function buildChord(
+  event: ScoreEvent,
+  clef: Clef,
+  registry: GlyphRegistry = defaultGlyphs,
+): LayoutNode {
   if (!event.notes.length) {
     const names: Record<number, string> = {
       1: "restWhole",
@@ -247,11 +272,19 @@ export function buildChord(event: ScoreEvent, clef: Clef): LayoutNode {
         0,
         event.duration.denominator === 1 ? 1 : 2,
         "rest",
+        registry,
       ),
     ];
     if (event.duration.dotted)
       nodes.push(
-        glyphNode(`${event.id}:dot`, "augmentationDot", 1.4, 1.5, "dot"),
+        glyphNode(
+          `${event.id}:dot`,
+          "augmentationDot",
+          1.4,
+          1.5,
+          "dot",
+          registry,
+        ),
       );
     return groupNode(event.id, "rest-group", nodes);
   }
@@ -264,23 +297,109 @@ export function buildChord(event: ScoreEvent, clef: Clef): LayoutNode {
   let previous = -Infinity,
     displaced = false,
     acc = 0;
-  return groupNode(
-    event.id,
-    "chord",
-    ordered.map((note, index) => {
-      const position = staffPosition(note.pitch, clef);
-      displaced = position - previous <= 1 ? !displaced : false;
-      previous = position;
-      return buildNote(
-        note,
-        event,
-        clef,
-        displaced ? (up ? 1.15 : -1.15) : 0,
-        note.accidental === undefined ? 0 : acc++,
-        { up, tipY, visible: up ? index === 0 : index === ordered.length - 1 },
+  const accidentalColumns: { min: number; max: number }[][] = [];
+  const notes = ordered.map((note) => {
+    const position = staffPosition(note.pitch, clef);
+    displaced = position - previous <= 1 ? !displaced : false;
+    previous = position;
+    let column = 0;
+    if (note.accidental !== undefined) {
+      const glyph = registry.get(
+          note.accidental === 1
+            ? "accidentalSharp"
+            : note.accidental === -1
+              ? "accidentalFlat"
+              : "accidentalNatural",
+        ),
+        min = 4 - position / 2 + glyph.bounds.y,
+        max = min + glyph.bounds.height;
+      while (
+        accidentalColumns[column]?.some(
+          (range) => !(max + 0.2 < range.min || min - 0.2 > range.max),
+        )
+      )
+        column++;
+      (accidentalColumns[column] ??= []).push({ min, max });
+    }
+    const offset = displaced ? (up ? 1.15 : -1.15) : 0;
+    const built = buildNote(
+      note,
+      event,
+      clef,
+      offset,
+      column,
+      { up, tipY, visible: false },
+      registry,
+    );
+    for (const child of built.children ?? [])
+      if (child.role === "accidental") child.x -= offset;
+    return built;
+  });
+  const shared: LayoutNode[] = [];
+  if (event.duration.denominator !== 1) {
+    const owner = up ? notes[0] : notes[notes.length - 1],
+      head = registry.get(
+        event.duration.denominator === 2 ? "noteheadHalf" : "noteheadBlack",
       );
-    }),
+    const attachment = head.anchors[up ? "stemUpSE" : "stemDownNW"] ?? {
+      x: up ? head.advance : 0,
+      y: 0,
+    };
+    const stemX = attachment.x,
+      stemY = owner.y + attachment.y;
+    shared.push(
+      line(`${event.id}:stem`, stemX, stemY, 0, tipY - stemY, 0.12, "stem"),
+    );
+    if (event.duration.denominator >= 8)
+      shared.push(
+        glyphNode(
+          `${event.id}:flag`,
+          `flag${event.duration.denominator === 8 ? "8th" : "16th"}${up ? "Up" : "Down"}`,
+          stemX,
+          tipY,
+          "flag",
+          registry,
+        ),
+      );
+  }
+  const group = groupNode(event.id, "chord", [...notes, ...shared]);
+  group.timing = event.notes;
+  group.metadata = {
+    voiceId: event.voiceId,
+    beat: event.beat,
+    duration: event.duration.beats,
+    stemUp: up,
+  };
+  const attachmentGlyph = registry.get(
+    event.duration.denominator === 2 ? "noteheadHalf" : "noteheadBlack",
   );
+  group.anchors = {
+    stemTip: { x: shared[0]?.x ?? 0, y: tipY },
+    stemBase: { x: shared[0]?.x ?? 0, y: shared[0]?.y ?? 0 },
+    stemBaseUp: {
+      x: attachmentGlyph.anchors.stemUpSE?.x ?? attachmentGlyph.advance,
+      y: notes[0].y + (attachmentGlyph.anchors.stemUpSE?.y ?? 0),
+    },
+    stemBaseDown: {
+      x: attachmentGlyph.anchors.stemDownNW?.x ?? 0,
+      y:
+        notes[notes.length - 1].y +
+        (attachmentGlyph.anchors.stemDownNW?.y ?? 0),
+    },
+  };
+  // Identical ledger segments across chord members are redundant.
+  const seen = new Set<string>();
+  for (const note of notes) {
+    note.children = note.children?.filter((child) => {
+      if (child.role !== "ledger" && child.role !== "dot") return true;
+      const key = `${child.role}:${note.x + child.x}:${note.y + child.y}:${child.line?.x}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    note.bounds = measureNodes(note.children ?? []);
+  }
+  return { ...group, bounds: measureNodes([...notes, ...shared]) };
 }
 function tieNode(id: string, x: number, y: number, width: number): LayoutNode {
   const w = Math.max(0.3, width);
@@ -316,18 +435,23 @@ function tieNode(id: string, x: number, y: number, width: number): LayoutNode {
   };
 }
 export function layoutScore(score: Score, options: LayoutOptions): ScoreLayout {
+  finite(options.width, "Page width", 1, 100000);
+  finite(options.height, "Page height", 1, 100000);
+  finite(options.staffSize, "Staff size", 0.01, 10000);
+  finite(options.measuresPerSystem, "Measures per system", 1, 4096);
   const { clef } = options,
     per = Math.max(1, Math.floor(options.measuresPerSystem));
   const systems: LayoutNode[] = [];
   for (let offset = 0; offset < score.measures.length; offset += per) {
     const measures = score.measures.slice(offset, offset + per),
       contents: LayoutNode[] = [];
-    let x = 8;
+    const keyWidth = Math.abs(score.keySignature?.fifths ?? 0) * 0.95;
+    let x = 8 + keyWidth;
     const placed: { node: LayoutNode; x: number; note: ScoreNote }[] = [];
     for (const measure of measures) {
       const groups = measure.events.map((event) => ({
         event,
-        node: buildChord(event, clef),
+        node: buildChord(event, clef, options.registry),
       }));
       const beats = [...new Set(groups.map((g) => g.event.beat))].sort(
         (a, b) => a - b,
@@ -358,8 +482,20 @@ export function layoutScore(score: Score, options: LayoutOptions): ScoreLayout {
         }
         const next =
           beats[i + 1] ?? (measure.index + 1) * score.beatsPerMeasure;
-        x += Math.max(right + 1.5, (next - beats[i]) * (options.beatSpacing ?? 3));
+        x += Math.max(
+          right + 1.5,
+          (next - beats[i]) * (options.beatSpacing ?? 3),
+        );
       }
+      if (options.beaming)
+        contents.push(
+          ...beamGroups(
+            groups,
+            score.beatGroups ??
+              Array(score.numerator).fill(4 / score.denominator),
+            measure.index * score.beatsPerMeasure,
+          ),
+        );
       x = Math.max(x, left + 12);
       contents.push(line(`bar:${measure.index}`, x, 0, 0, 4, 0.12, "barline"));
       x += 1;
@@ -369,14 +505,23 @@ export function layoutScore(score: Score, options: LayoutOptions): ScoreLayout {
         const next = placed.find(
           (q) => q.note.sourceId === p.note.sourceId && q.x > p.x,
         );
-        contents.push(
-          tieNode(
-            `${p.note.id}:tie-out`,
-            p.x + 0.7,
-            p.node.y + 1,
-            next ? next.x - p.x : x - p.x - 0.8,
-          ),
+        const tie = tieNode(
+          `${p.note.id}:tie-out`,
+          p.x + 0.7,
+          p.node.y + 1,
+          next ? next.x - p.x : x - p.x - 0.8,
         );
+        tie.timing = [p.note];
+        if (next) {
+          tie.x = 0;
+          tie.y = 0;
+          tie.connection = {
+            from: { id: p.node.id, anchor: "tie" },
+            to: { id: next.node.id, anchor: "tie" },
+            kind: "tie",
+          };
+        }
+        contents.push(tie);
       }
       if (
         p.note.tieIn &&
@@ -399,8 +544,19 @@ export function layoutScore(score: Score, options: LayoutOptions): ScoreLayout {
         0.6,
         clef === "treble" ? 3 : 1,
         "clef",
+        options.registry,
       ),
     ];
+    if (score.keySignature?.fifths) {
+      const key = buildKeySignature(
+        `key:${offset}`,
+        score.keySignature,
+        clef,
+        options.registry,
+      );
+      key.x = 3.8;
+      header.push(key);
+    }
     const digits = (value: number, y: number) =>
       String(value)
         .split("")
@@ -408,9 +564,10 @@ export function layoutScore(score: Score, options: LayoutOptions): ScoreLayout {
           glyphNode(
             `meter:${offset}:${y}:${i}`,
             `timeSig${digit}`,
-            4 + i * 1.1,
+            4 + keyWidth + i * 1.1,
             y,
             "meter",
+            options.registry,
           ),
         );
     header.push(...digits(score.numerator, 1), ...digits(score.denominator, 3));
@@ -436,6 +593,8 @@ export function layoutScore(score: Score, options: LayoutOptions): ScoreLayout {
   );
   // Layout remains in staff spaces. A wrapper records the one common scale in its bounds/anchor.
   const page = groupNode("page", "page", systems);
-  page.anchors.scale = { x: scale, y: scale };
+  page.scaleX = scale;
+  page.scaleY = scale;
+  page.anchors.scale = { x: scale, y: scale }; // Read compatibility for existing consumers.
   return { nodes: [page], width: options.width, height: options.height };
 }

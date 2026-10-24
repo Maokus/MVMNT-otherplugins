@@ -173,3 +173,36 @@ it("assembles chords around one stem and flag, even across the staff middle", ()
   expect(nodes.filter((n) => n.role === "stem")).toHaveLength(1);
   expect(nodes.filter((n) => n.role === "flag")).toHaveLength(1);
 });
+
+it("places copies on continuous paths with correct tangents", async () => {
+  const { pathPosition, placeOnPath } =
+    await import("../src/notation/placement");
+  const options = {
+    mode: "circle" as const,
+    spacing: 4,
+    radius: 10,
+    amplitude: 3,
+    cycles: 1,
+    phase: 0,
+    rotateToPath: true,
+  };
+  expect(pathPosition(0, 4, options)).toEqual({
+    x: 10,
+    y: 0,
+    tangent: Math.PI / 2,
+  });
+  expect(pathPosition(1, 4, options).y).toBeCloseTo(10);
+  const event = adaptMidiNotes([note(64, 0, 1)], {
+    ...options,
+    tempo: 120,
+    numerator: 4,
+    denominator: 4,
+  }).measures[0].events[0];
+  const node = buildChord(event, "treble"),
+    before = JSON.stringify(node),
+    placed = placeOnPath([node, node], options);
+  expect(placed[0]).not.toBe(node);
+  expect(placed[0].rotation).toBe(Math.PI / 2);
+  expect(JSON.stringify(node)).toBe(before);
+  expect(pathPosition(0, 1, { ...options, mode: "wave" }).x).toBe(0);
+});

@@ -1,0 +1,120 @@
+{
+  "id": "us.maok.schematicsnscores",
+  "name": "Schematics n’ Scores",
+  "version": "1.0.0",
+  "apiVersion": "^2.2.0",
+  "description": "Ten MIDI-conditioned mark languages for flexible score and schematic decorations.",
+  "author": "Maokus",
+  "elements": [
+    {
+      "type": "sns-cage",
+      "entry": "src/cage.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read",
+          "timing.conversion"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "sns-penderecki",
+      "entry": "src/penderecki.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read",
+          "timing.conversion"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "sns-decesare",
+      "entry": "src/decesare.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read",
+          "timing.conversion"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "sns-notation",
+      "entry": "src/notation.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read",
+          "timing.conversion"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "sns-schematic",
+      "entry": "src/schematic.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read",
+          "timing.conversion"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "sns-isometric",
+      "entry": "src/isometric.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read",
+          "timing.conversion"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "sns-wall",
+      "entry": "src/wall.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read",
+          "timing.conversion"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "sns-mechanism",
+      "entry": "src/mechanism.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read",
+          "timing.conversion"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "sns-field",
+      "entry": "src/field.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read",
+          "timing.conversion"
+        ],
+        "optional": []
+      }
+    },
+    {
+      "type": "sns-matrix",
+      "entry": "src/matrix.ts",
+      "capabilities": {
+        "required": [
+          "timeline.read",
+          "timing.conversion"
+        ],
+        "optional": []
+      }
+    }
+  ]
+}

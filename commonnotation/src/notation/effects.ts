@@ -56,3 +56,43 @@ export function blendNoteColor(
       .join("")
   );
 }
+
+import type { NodeStyle, RenderOptions } from "./renderer";
+/** Default phase appearance is shared by ordinary rendering and spatial projection. */
+export function evaluateNoteStyle(
+  phase: NotePhase,
+  options: RenderOptions,
+): NodeStyle {
+  if (options.animate === false) return {};
+  const upcoming = options.upcomingOpacity ?? 0.22,
+    completed = options.completedOpacity ?? 1,
+    scale = options.activeScale ?? 1.06;
+  const entry = options.revealStyle ?? "slide",
+    exit = options.releaseStyle ?? "settle";
+  const enter = options.revealDistance ?? options.motionAmount ?? 0.6,
+    leave = options.releaseDistance ?? options.motionAmount ?? 0.6;
+  if (phase.phase === "upcoming") return { opacity: upcoming };
+  if (phase.phase === "reveal")
+    return {
+      opacity: upcoming + (1 - upcoming) * phase.amount,
+      y: entry === "slide" ? (1 - phase.amount) * enter : 0,
+      rotation: entry === "spin" ? (1 - phase.amount) * Math.PI : 0,
+      scale: entry === "spin" ? 0.5 + 0.5 * phase.amount : 1,
+    };
+  if (phase.phase === "active") return { color: options.activeColor, scale };
+  if (phase.phase === "release")
+    return {
+      color: blendNoteColor(options.color, options.activeColor, phase.amount),
+      opacity: completed + (1 - completed) * phase.amount,
+      scale:
+        exit === "shrink"
+          ? 0.3 + (scale - 0.3) * phase.amount
+          : 1 + (scale - 1) * phase.amount,
+      y: exit === "float" ? -(1 - phase.amount) * leave : 0,
+    };
+  return {
+    opacity: completed,
+    scale: exit === "shrink" ? 0.3 : 1,
+    y: exit === "float" ? -leave : 0,
+  };
+}

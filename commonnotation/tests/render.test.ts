@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 // Use the same primitive implementations the host injects, without importing app state.
 vi.mock("@mvmnt-app/plugin-sdk/render", async () => ({
+  ...(await import("../../../MVMNT/src/core/render/render-objects/arc")),
   ...(await import("../../../MVMNT/src/core/render/render-objects/bezier")),
   ...(await import("../../../MVMNT/src/core/render/render-objects/empty")),
   ...(await import("../../../MVMNT/src/core/render/render-objects/line")),
