@@ -3,6 +3,7 @@ import type { MidiNoteEvent } from '@mvmnt-app/plugin-sdk/timeline';
 
 export const languages = ['cage', 'penderecki', 'decesare', 'notation', 'schematic', 'isometric', 'wall', 'mechanism', 'field', 'matrix'] as const;
 export type Language = typeof languages[number];
+export type ElementKind = Language | 'panels';
 export type Props = Readonly<Record<string, unknown>>;
 export const MAX_NOTES = 256;
 export const MAX_PRIMITIVES = 6000;
@@ -12,9 +13,11 @@ export const number = (p: Props, key: string, fallback: number, lo: number, hi: 
 
 export interface Settings {
     width: number; height: number; padding: number; vertical: boolean;
-    density: number; seed: number; autoRange: boolean; minNote: number; maxNote: number;
+    density: number; visualDensity: number; seed: number; autoRange: boolean; minNote: number; maxNote: number;
     stroke: number; scale: number; ink: string; accent: string; guide: string; background: string;
     guides: boolean; accentStrength: number; release: number; motion: number; playhead: boolean;
+    accentMode: 'ink' | 'spot' | 'none';
+    transition: 'none' | 'slide' | 'scale' | 'draw'; transitionDuration: number; stagger: number; travel: number;
     pointSize: number; connections: number; bandThickness: number; hatchSpacing: number;
     cellSize: number; boxes: boolean; staffCount: number; noteScale: number;
     diagramScale: number; annotations: boolean; depth: number; nodeSize: number;
@@ -28,13 +31,16 @@ export function settings(p: Props): Settings {
     const width = number(p, 'width', 640, 16, 8192), height = number(p, 'height', 160, 16, 8192);
     return {
         width, height, padding: number(p, 'padding', 12, 0, Math.min(width, height) / 2 - 1), vertical: p.orientation === 'vertical',
-        density: number(p, 'density', .65, 0, 1), seed: Math.round(number(p, 'seed', 1998, 0, 2147483647)),
+        density: number(p, 'density', .65, 0, 1), visualDensity: number(p, 'visualDensity', 1, 1, 4), seed: Math.round(number(p, 'seed', 1998, 0, 2147483647)),
         autoRange: p.autoRange !== false, minNote: number(p, 'minNote', 36, 0, 127), maxNote: number(p, 'maxNote', 84, 0, 127),
         stroke: number(p, 'strokeWidth', .8, .1, 8), scale: number(p, 'markScale', 1, .25, 4),
         ink: color(p, 'inkColor', '#F5F1E8FF'), accent: color(p, 'accentColor', '#C76760FF'),
         guide: color(p, 'guideColor', '#F5F1E830'), background: color(p, 'backgroundColor', '#00000000'),
         guides: p.showGuides === true, accentStrength: number(p, 'accentStrength', .55, 0, 1),
         release: number(p, 'release', .45, .01, 5), motion: number(p, 'motionAmount', .5, 0, 8), playhead: p.showPlayhead === true,
+        accentMode: p.accentMode === 'spot' || p.accentMode === 'none' ? p.accentMode : 'ink',
+        transition: p.transition === 'none' || p.transition === 'scale' || p.transition === 'draw' ? p.transition : 'slide',
+        transitionDuration: number(p, 'transitionDuration', .8, 0, 3), stagger: number(p, 'transitionStagger', .55, 0, .9), travel: number(p, 'transitionTravel', 12, 0, 64),
         pointSize: number(p, 'pointSize', 1.6, .3, 8), connections: number(p, 'connections', .35, 0, 1),
         bandThickness: number(p, 'bandThickness', 1, .2, 3), hatchSpacing: number(p, 'hatchSpacing', 4, 1, 20),
         cellSize: number(p, 'cellSize', 22, 8, 80), boxes: p.showBoxes !== false,
@@ -80,7 +86,7 @@ export function sample<T>(items: readonly T[], count: number): T[] {
     return Array.from({ length: count }, (_, i) => items[Math.round(i * (items.length - 1) / (count - 1))]);
 }
 
-export function readPage(p: Props, seconds: number, context: ElementContext<Props>): Page | null {
+export function readPage(p: Props, seconds: number, context: ElementContext<Props>, pageIndex?: number): Page | null {
     if (typeof p.midiTrackId !== 'string' || !p.midiTrackId || !context.timeline || !context.timing || !Number.isFinite(seconds)) return null;
     const timing = context.timing;
     const beat = timing.secondsToBeats(seconds), signature = timing.getTimeSignature();
@@ -89,7 +95,7 @@ export function readPage(p: Props, seconds: number, context: ElementContext<Prop
     if (!(numerator > 0 && denominator > 0)) return null;
     const beats = Math.round(number(p, 'pageBars', 4, 1, 16)) * numerator * 4 / denominator;
     const offset = number(p, 'pageOffset', 0, -4096, 4096);
-    const index = Math.floor((beat.value - offset) / beats);
+    const index = pageIndex ?? Math.floor((beat.value - offset) / beats);
     const startBeat = index * beats + offset;
     const start = timing.beatsToSeconds(startBeat), end = timing.beatsToSeconds(startBeat + beats);
     if (!start.ok || !end.ok || !Number.isFinite(start.value) || !Number.isFinite(end.value) || end.value <= start.value) return null;

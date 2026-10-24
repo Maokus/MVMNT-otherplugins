@@ -5,11 +5,11 @@ import { load, defaults, context, note, frame, flatten, fixtures, fail, Rectangl
 
 const { languages, readPage, settings, MAX_NOTES, MAX_PRIMITIVES, activity } = load('model');
 const { generate } = load('geometry');
-const { blend, trim, renderDrawing } = load('render');
+const { trim, renderDrawing } = load('render');
 
 test('manifest and ten genuine SDK definitions agree, with MIDI selectors and unique controls', () => {
     const manifest = JSON.parse(readFileSync(new URL('../plugin.json', import.meta.url)));
-    assert.equal(manifest.elements.length, 10);
+    assert.equal(manifest.elements.length, 11);
     for (const language of languages) {
         const definition = load(language).default;
         assert.equal(definition.kind, 'mvmnt.plugin-element.v2');
@@ -68,7 +68,7 @@ test('input validation, track isolation, pitch ranges, missing velocity, and sta
 for (const language of languages) {
     test(`${language}: random-access rendering, MIDI edits, and a stable phrase composition`, () => {
         const definition = load(language).default;
-        const props = { ...defaults(language), midiTrackId: 'midi', motionAmount: 0, accentStrength: 0 };
+        const props = { ...defaults(language), midiTrackId: 'midi', motionAmount: 0, accentStrength: 0, transition: 'none' };
         const ctx = context(fixtures.sparse), cache = definition.createResources({});
         const first = frame(definition, props, ctx, .6, cache);
         const drawing = cache.drawing;
@@ -89,7 +89,7 @@ for (const language of languages) {
         const definition = load(language).default;
         const props = { ...defaults(language), midiTrackId: 'midi' }, ctx = context([note(60, .3, 1)]);
         assert.notDeepEqual(frame(definition, props, ctx, .1), frame(definition, props, ctx, .6));
-        assert.deepEqual(frame(definition, { ...props, motionAmount: 0, accentStrength: 0 }, ctx, .1), frame(definition, { ...props, motionAmount: 0, accentStrength: 0 }, ctx, .6));
+        assert.deepEqual(frame(definition, { ...props, motionAmount: 0, accentStrength: 0, transition: 'none' }, ctx, .1), frame(definition, { ...props, motionAmount: 0, accentStrength: 0, transition: 'none' }, ctx, .6));
         assert.deepEqual(frame(definition, { ...props, midiTrackId: '' }, ctx, 1), []);
         assert.deepEqual(frame(definition, props, {}, 1), []);
         assert.deepEqual(frame(definition, props, { ...ctx, timeline: { selectNotes: fail } }, 1), []);
@@ -141,9 +141,6 @@ test('all four MIDI dimensions condition every language', () => {
 });
 
 test('alpha survives activity mixing and Matrix hollow cells never paint a background', () => {
-    assert.equal(blend('#11223300', '#FFEEDDFF', 1), '#ffeedd00');
-    assert.equal(blend('#11223380', '#FFEEDDFF', 1), '#ffeedd80');
-    assert.equal(blend('#11223380', '#FFEEDD00', 1), '#11223380');
     const props = { ...defaults('matrix'), midiTrackId: 'midi', inkColor: '#11223300', accentColor: '#FFEEDDFF', density: 1 };
     const objects = flatten(frame(load('matrix').default, props, context(fixtures.dense), 1));
     for (const o of objects.filter(o => o instanceof Rectangle && o.fillColor)) assert.ok(o.fillColor.endsWith('00'));

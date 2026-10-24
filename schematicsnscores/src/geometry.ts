@@ -1,8 +1,9 @@
 import { clamp, hash, MAX_PRIMITIVES, random, sample, type Language, type Note, type Page, type Settings } from './model';
+import { enrich, markAccents } from './detail';
 
 export type Point = [number, number];
 export type Role = 'ink' | 'accent' | 'guide';
-interface Style { role?: Role; opacity?: number; weight?: number; fill?: boolean; dash?: number[] }
+export interface Style { role?: Role; opacity?: number; weight?: number; fill?: boolean; dash?: number[]; detail?: boolean; emphasis?: 'weight' | 'fill' | 'ring' | 'tick' | 'trace' }
 export type Shape = Style & (
     { kind: 'line'; a: Point; b: Point } |
     { kind: 'poly'; points: Point[]; closed: boolean } |
@@ -331,7 +332,9 @@ export function generate(language: Language, page: Page, s: Settings): Drawing {
             break;
         }
     }
-    return { groups: p.groups.filter(g => g.shapes.length), width, height, count: p.count };
+    const drawing = { groups: p.groups.filter(g => g.shapes.length), width, height, count: p.count };
+    markAccents(language, drawing);
+    return enrich(language, drawing, page, s);
 }
 
 function drawGlyph(p: Pen, g: MarkGroup, kind: number, cx: number, cy: number, r: number, style: Style) {

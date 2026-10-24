@@ -1,11 +1,12 @@
 import { prop, type ElementPropertyDefinition, type ElementSchema } from '@mvmnt-app/plugin-sdk';
-import type { Language } from './model';
+import type { Language, ElementKind } from './model';
 
-export const titles: Record<Language, string> = {
+export const titles: Record<ElementKind, string> = {
     cage: 'Cage', penderecki: 'Penderecki', decesare: 'De Cesare', notation: 'Notation', schematic: 'Schematic',
     isometric: 'Isometric', wall: 'Wall', mechanism: 'Mechanism', field: 'Field', matrix: 'Matrix',
+    panels: 'Score Panels',
 };
-export const descriptions: Record<Language, string> = {
+export const descriptions: Record<ElementKind, string> = {
     cage: 'Sparse points and fine curves suspended in open space.',
     penderecki: 'Massed tone clusters, wedges, and fine hatching.',
     decesare: 'Irregular boxed cells and a geometric glyph vocabulary.',
@@ -16,6 +17,7 @@ export const descriptions: Record<Language, string> = {
     mechanism: 'Pulley trains and belts driven by the MIDI phrase.',
     field: 'Scattered clusters of small, varied marks.',
     matrix: 'A punch-card grid of MIDI-driven cells and slots.',
+    panels: 'Seeded unequal panels distribute MIDI onset groups across the ten mark languages.',
 };
 const n = (key: string, label: string, value: number, min: number, max: number, step = .1) => prop.number(key, label, value, { min, max, step });
 const specific: Record<Language, ElementPropertyDefinition[]> = {
@@ -30,7 +32,7 @@ const specific: Record<Language, ElementPropertyDefinition[]> = {
     field: [n('markSize', 'Mark Size', 3, 1, 12, .5), n('scatter', 'Scatter', .7, 0, 1, .05)],
     matrix: [n('rows', 'Rows', 12, 2, 32, 1), n('subdivision', 'Columns per Beat', 2, 1, 8, 1)],
 };
-export function schema(language: Language): ElementSchema {
+export function schema(language: ElementKind): ElementSchema {
     return {
         tabs: [
             { id: 'content', label: 'Content', groups: [
@@ -40,20 +42,25 @@ export function schema(language: Language): ElementSchema {
                     prop.number('pageOffset', 'Page Offset (beats)', 0, { min: -4096, max: 4096, step: .25, description: 'Shift phrase boundaries relative to timeline beat zero.' }),
                 ] },
                 { id: 'layout', label: 'Layout', properties: [
-                    n('width', 'Width', 640, 16, 8192, 1), n('height', 'Height', 160, 16, 8192, 1), n('padding', 'Padding', 12, 0, 512, 1),
+                    n('width', 'Width', language === 'panels' ? 1280 : 640, 16, 8192, 1), n('height', 'Height', language === 'panels' ? 720 : 160, 16, 8192, 1), n('padding', 'Padding', 12, 0, 512, 1),
                     prop.select('orientation', 'Orientation', 'horizontal', [{ value: 'horizontal', label: 'Horizontal' }, { value: 'vertical', label: 'Vertical' }]),
                 ] },
                 { id: 'composition', label: 'Composition', properties: [
-                    n('density', 'Density', .65, 0, 1, .05), n('seed', 'Seed', 1998, 0, 2147483647, 1),
+                    n('density', 'Note Coverage', .65, 0, 1, .05),
+                    prop.number('visualDensity', 'Visual Density', 1, { min: 1, max: 4, step: .1, description: 'Add companion structures and fine detail without adding MIDI events or moving the primary marks.' }),
+                    n('seed', 'Seed', 1998, 0, 2147483647, 1),
                     prop.boolean('autoRange', 'Auto Pitch Range', true),
                     prop.number('minNote', 'Lowest MIDI Pitch', 36, { min: 0, max: 127, step: 1, visibleWhen: [{ key: 'autoRange', equals: false }] }),
                     prop.number('maxNote', 'Highest MIDI Pitch', 84, { min: 0, max: 127, step: 1, visibleWhen: [{ key: 'autoRange', equals: false }] }),
-                    ...specific[language],
+                    ...(language === 'panels' ? [
+                        n('panelCount', 'Panel Count', 10, 1, 16, 1), n('panelGutter', 'Gutter', 12, 0, 64, 1),
+                        n('layoutSeed', 'Layout Seed', 1998, 0, 2147483647, 1), prop.boolean('showDividers', 'Show Panel Dividers', false),
+                    ] : specific[language]),
                 ] },
             ] },
             { id: 'appearance', label: 'Appearance', groups: [
                 { id: 'palette', label: 'Palette & Marks', properties: [
-                    prop.colorAlpha('inkColor', 'Ink', '#F5F1E8FF'), prop.colorAlpha('accentColor', 'Accent', '#C76760FF'),
+                    prop.colorAlpha('inkColor', 'Ink', '#F5F1E8FF'), prop.colorAlpha('accentColor', 'Accent', '#C76760FF', { visibleWhen: [{ key: 'accentMode', equals: 'spot' }] }),
                     prop.colorAlpha('guideColor', 'Guides', '#F5F1E830'), prop.colorAlpha('backgroundColor', 'Background', '#00000000'),
                     n('strokeWidth', 'Stroke Width', .8, .1, 8), n('markScale', 'Mark Scale', 1, .25, 4),
                     prop.boolean('showGuides', 'Show Structural Guides', false),
@@ -63,8 +70,15 @@ export function schema(language: Language): ElementSchema {
                     { id: 'blueprint', label: 'Blueprint', values: { inkColor: '#E3EEF5FF', accentColor: '#EAB76CFF', guideColor: '#E3EEF530', backgroundColor: '#102E46FF' } },
                 ] },
                 { id: 'playback', label: 'Playback', properties: [
+                    prop.select('accentMode', 'Accent Mode', 'ink', [{ value: 'ink', label: 'Ink' }, { value: 'spot', label: 'Spot Color' }, { value: 'none', label: 'None' }]),
                     n('accentStrength', 'Accent Strength', .55, 0, 1, .05), n('release', 'Release (seconds)', .45, .01, 5, .05),
                     n('motionAmount', 'Motion Amount', .5, 0, 8), prop.boolean('showPlayhead', 'Show Playhead', false),
+                ] },
+                { id: 'transitions', label: 'Phrase Transitions', properties: [
+                    prop.select('transition', 'Transition', 'slide', [{ value: 'none', label: 'None' }, { value: 'slide', label: 'Slide & Fade' }, { value: 'scale', label: 'Shrink & Grow' }, { value: 'draw', label: 'Retract & Draw' }]),
+                    n('transitionDuration', 'Duration (seconds)', .8, 0, 3, .05),
+                    n('transitionStagger', 'Stagger', .55, 0, .9, .05),
+                    prop.number('transitionTravel', 'Travel Distance (px)', 12, { min: 0, max: 64, step: 1, visibleWhen: [{ key: 'transition', equals: 'slide' }] }),
                 ] },
             ] },
         ],
